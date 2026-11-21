@@ -535,8 +535,10 @@ struct KeyMap {
 /* Buttons -> keys.
  *  Menus and name entry: A selects (Return), B backs out (Escape), Start selects.
  *  Tank scheme (original controls): D-pad drives, A shoots, B is Special.
- *  Twin-stick scheme: D-pad walks, X/A/B/Y aim and fire up/right/down/left (the game reads them as
- *  i/l/k/j), R1 fires along the current aim, L1 is Special.
+ *  Twin-stick scheme: the D-pad (left stick) walks. The right stick of these handhelds is wired to the
+ *  A/B/X/Y buttons, so holding L1 turns the face buttons into aim-and-fire directions (X up, A right, B down,
+ *  Y left, read by the game as i/l/k/j; two together aim diagonally). Without L1, A fires along the current
+ *  aim, B is Special, and R1 also fires along the aim. See face_update() below.
  *  Both: Start pauses, Select ends the match (Escape). */
 static const KeyMap g_map[] = {
     { JK_UP,     SDLK_UP,     C_ALWAYS, 1 },
@@ -545,14 +547,9 @@ static const KeyMap g_map[] = {
     { JK_RIGHT,  SDLK_RIGHT,  C_ALWAYS, 1 },
     { JK_A,      SDLK_RETURN, C_ALWAYS, 0 },
     { JK_A,      SDLK_RCTRL,  C_NOTWIN, 0 },
-    { JK_A,      SDLK_l,      C_TWIN,   0 },
     { JK_B,      SDLK_RSHIFT, C_NOTWIN, 0 },
     { JK_B,      SDLK_ESCAPE, C_MENU,   0 },
-    { JK_B,      SDLK_k,      C_TWIN,   0 },
-    { JK_X,      SDLK_i,      C_TWIN,   0 },
-    { JK_Y,      SDLK_j,      C_TWIN,   0 },
     { JK_R1,     SDLK_RCTRL,  C_TWIN,   0 },
-    { JK_L1,     SDLK_RSHIFT, C_TWIN,   0 },
     { JK_START,  SDLK_p,      C_MATCH,  0 },
     { JK_START,  SDLK_RETURN, C_MENU,   0 },
     { JK_SELECT, SDLK_ESCAPE, C_ALWAYS, 0 },
@@ -560,6 +557,9 @@ static const KeyMap g_map[] = {
 
 static void push_key(SDLKey sym, bool down)
 {
+#ifdef FORMIDO_TESTHOOKS
+    fprintf(stderr, "key %s %d (in_game=%d twin=%d) t=%lld\n", down ? "down" : "up  ", (int)sym, g_in_game, (int)g_twin, now_ms());
+#endif
     SDL_Event ev;
     memset(&ev, 0, sizeof(ev));
     ev.type = down ? SDL_KEYDOWN : SDL_KEYUP;
@@ -573,6 +573,32 @@ static bool g_down[sizeof(g_map) / sizeof(g_map[0])];
 static long long g_next_repeat[sizeof(g_map) / sizeof(g_map[0])];
 static bool g_quit_pending = false;
 static long long g_last_quit_ms = 0;
+
+/* Twin-stick face buttons. Each press takes its role when it starts: with L1 held it is an aim button
+ * until released, without L1 it is an action button until released (so letting go of L1 while the right
+ * stick is still pushed does not turn the aim into a fire or a throw). */
+static bool g_face_down[4];
+static SDLKey g_face_key[4];
+
+static void face_update(unsigned cur, bool twin)
+{
+    static const int jk[4] = { JK_A, JK_B, JK_X, JK_Y };
+    static const SDLKey aim[4] = { SDLK_l, SDLK_k, SDLK_i, SDLK_j };          /* right, down, up, left */
+    static const SDLKey act[4] = { SDLK_RCTRL, SDLK_RSHIFT, SDLK_UNKNOWN, SDLK_UNKNOWN }; /* fire, special */
+    bool l1 = (cur & (1u << JK_L1)) != 0;
+    for (int i = 0; i < 4; i++) {
+        bool down = twin && (cur & (1u << jk[i])) != 0;
+        if (down && !g_face_down[i]) {
+            g_face_down[i] = true;
+            g_face_key[i] = l1 ? aim[i] : act[i];
+            if (g_face_key[i] != SDLK_UNKNOWN) push_key(g_face_key[i], true);
+        } else if (!down && g_face_down[i]) {
+            g_face_down[i] = false;
+            if (g_face_key[i] != SDLK_UNKNOWN) push_key(g_face_key[i], false);
+            g_face_key[i] = SDLK_UNKNOWN;
+        }
+    }
+}
 
 #ifdef FORMIDO_TESTHOOKS
 /* Test builds only. FORMIDO_PAD="ms:mask,ms:mask,..." scripts the gamepad (mask bits as JK_* in
@@ -655,6 +681,8 @@ static void pad_update(void)
             g_next_repeat[i] = now_ms() + 130;
         }
     }
+
+    face_update(cur, g_in_game && g_twin);
 
     /* Select + Start together: leave the game from anywhere */
     if ((cur & (1u << JK_SELECT)) && (cur & (1u << JK_START))) g_quit_pending = true;

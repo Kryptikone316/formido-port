@@ -8,20 +8,25 @@ Datafrog SF3500 handheld (MIPS32r2, SDL 1.2, no audio device). Upstream sources 
 
 Menus: D-pad chooses, A or Start selects, B or Select goes back.
 
-In a match (default, `controls = 1` in `formido.cfg`): twin-stick style.
+In a match (default, `controls = 1` in `formido.cfg`): twin-stick style. These handhelds' right stick is wired to
+the A/B/X/Y buttons, so holding **L1** turns them into the aiming stick.
 
-| Button | Action |
+| Buttons | Action |
 |---|---|
-| D-pad | walk in the direction pressed (8 ways); you face the way you walk |
-| X / A / B / Y | aim and fire up / right / down / left; two together aim diagonally; you can walk one way and fire another |
+| D-pad (left stick) | walk in the direction pressed (8 ways); you face the way you walk |
+| L1 + X / A / B / Y | aim and fire up / right / down / left; two face buttons together aim diagonally; you can walk one way and fire another |
+| A (without L1) | fire along the current aim |
 | R1 | fire along the current aim |
-| L1 | special (throw the power-up you hold, in the aim direction) |
+| B (without L1) | special (throw the power-up you hold, in the aim direction) |
 | Start | pause |
 | Select | end the match |
 | Select + Start | leave the game from anywhere |
 
+A press keeps the role it started with: a face button pressed while L1 is held stays an aim button until released,
+even if L1 is let go first (and the other way round), so easing off L1 never causes a stray throw.
+
 `controls = 0` restores the original tank controls: Left/Right turn, Up/Down walk along the facing, A shoots,
-B is special.
+B is special (the face buttons then ignore L1).
 
 High-score name: Up/Down change the letter, Right takes it, Left or B steps back, A finishes.
 
