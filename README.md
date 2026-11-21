@@ -17,6 +17,7 @@ the A/B/X/Y buttons, so holding **L1** turns them into the aiming stick.
 | L1 + X / A / B / Y | aim and fire up / right / down / left; two face buttons together aim diagonally; you can walk one way and fire another |
 | A (without L1) | fire along the current aim |
 | R1 | fire along the current aim (in the enhanced game: deploy the bunker) |
+| R2 | enhanced game: lay a trap |
 | B (without L1) | special (throw the power-up you hold, in the aim direction) |
 | Start | pause |
 | Select | end the match |
@@ -60,6 +61,16 @@ The main menu has **play classic game** (the original, untouched) and **play enh
   little less to the others. Each load is 160 rounds and spoils after 45 seconds, whichever comes first; then you shoot
   normally again. The hive notices what you fire: the longer you use one kind, the fewer of its rank it sends, with a
   message when it adapts.
+- **Traps.** Round trap discs turn up in the arms now and then (about one every 70 to 120 seconds while you are out
+  there, and 10 % of guardians drop one); each gives a few charges of one kind. **R2** leaves a trap behind you:
+  **napalm** (a field of fire, 36 hit points a second to whatever stands in it, burns out in about 16 seconds),
+  **spikes** (booby-trapped spears, 22 a second and they slow what is on them, last 40 seconds) or **glue** (a puddle
+  that holds bugs almost still in the middle and slows them hard around the edge, 30 seconds). Each trap has an
+  integrity of its own, which the bugs wear down, and it fades with time. **The player is not safe on a trap either**:
+  the same burning, spearing and sticking applies to you, so stay off. Pickup icons are different in shape as well as
+  colour: classic power-ups and cells are as before, special rounds are cartridges with a coloured tip (red drones,
+  pale yellow runners, gold strikers, blue brutes), traps are round discs (flame, spears, drop), the bunker kit is a
+  green dome with a white rim, healing plants are green.
 - **Bunker.** A rare kit that only a guardian can drop (15 % per guardian, one in three for the warden; never more than
   one kit or bunker at a time). Walk over the kit to take it, then press **R1** to deploy the bunker a little ahead of
   you and step onto it. Inside you cannot walk, but you can turn, aim and fire out; you mend 3 hit points a second, and

@@ -566,7 +566,8 @@ static int carrying = 0;			// arm of the cell the player carries, 0 for none
 static int mode = 0;				// arm of the cell that set the pylons' mode, 0 for none
 static long mode_until = 0;
 static SDL_Surface *cell_spr[5];	// the cell
-static SDL_Surface *glow_spr[6];	// soft light in the arm's colour ([5]: the healing plant)
+static SDL_Surface *glow_spr[6];
+static SDL_Surface *glow_item[9];		// soft light under the pickups: [0-3] ammo, [4-7] traps, [8] bunker kit	// soft light in the arm's colour ([5]: the healing plant)
 
 #define MODE_SECONDS	120
 #define MODE_ADD_SECONDS 90
@@ -622,21 +623,22 @@ static SDL_Surface *make_cell_sprite(int arm) {
 	return sp;
 }
 
-static SDL_Surface *make_glow_sprite(int arm) {
-	const int S = 72;
+static SDL_Surface *make_glow_rgb(int cr, int cg, int cb, int S, float strength) {
 	SDL_Surface *sp = SDL_CreateRGBSurface(SDL_SWSURFACE, S, S, 32, 0xff, 0xff00, 0xff0000, 0xff000000);
 	for(int y=0; y<S; y++) {
 		for(int x=0; x<S; x++) {
 			float d = sqrtf((x - S / 2.0f + 0.5f) * (x - S / 2.0f + 0.5f) + (y - S / 2.0f + 0.5f) * (y - S / 2.0f + 0.5f)) / (S / 2.0f);
 			float a = d >= 1.0f ? 0.0f : (1.0f - d) * (1.0f - d);
 			Uint8 *p = (Uint8 *)sp->pixels + y * sp->pitch + x * 4;
-			p[0] = ARM_COL[arm][0];
-			p[1] = ARM_COL[arm][1];
-			p[2] = ARM_COL[arm][2];
-			p[3] = (Uint8)(a * 150);
+			p[0] = cr; p[1] = cg; p[2] = cb;
+			p[3] = (Uint8)(a * strength);
 		}
 	}
 	return sp;
+}
+
+static SDL_Surface *make_glow_sprite(int arm) {
+	return make_glow_rgb(ARM_COL[arm][0], ARM_COL[arm][1], ARM_COL[arm][2], 72, 150.0f);
 }
 
 static void make_cell_sprites() {
@@ -647,6 +649,12 @@ static void make_cell_sprites() {
 		glow_spr[i] = make_glow_sprite(i);
 	}
 	glow_spr[5] = make_glow_sprite(5);
+	// each kind of pickup has its own colour of light under it: ammo in its rank's colour, traps in theirs, the kit white
+	static const int IG[9][3] = { {214,96,60}, {250,226,120}, {236,176,40}, {130,164,224},
+		{255,140,40}, {196,196,176}, {230,215,70}, {0,0,0}, {240,240,230} };
+	for(int i=0; i<9; i++)
+		if(i != 7)
+			glow_item[i] = make_glow_rgb(IG[i][0], IG[i][1], IG[i][2], 56, 120.0f);
 }
 
 // somewhere deep in the arm, away from the open side, not inside rock, and not where it was last time
@@ -1177,6 +1185,8 @@ static void burrow_update(int here) {
 
 static void blit_center(SDL_Surface *bmp, SDL_Surface *sp, int x, int y);
 static void rect(SDL_Surface *bmp, int x, int y, int w, int h, int r, int g, int b);
+#define NUM_TRAPS	3
+static void traps_draw_under(SDL_Surface *bmp);
 
 #define BUNKER_INTEGRITY	800.0f
 #define BUNKER_ABSORB		0.35f			// share of a bite that reaches it (it is built to take them)
@@ -1214,20 +1224,25 @@ static bool bunker_anything() {
 }
 
 static SDL_Surface *make_kit_sprite() {
-	const int W_ = 30, H_ = 22;
+	// the bunker kit: a little dome with a gun slit, olive with a white rim (nothing else is dome shaped)
+	const int W_ = 34, H_ = 26;
 	SDL_Surface *sp = SDL_CreateRGBSurface(SDL_SWSURFACE, W_, H_, 16, 0xf800, 0x07e0, 0x001f, 0);
 	Uint32 key = SDL_MapRGB(sp->format, 255, 0, 255);
 	SDL_FillRect(sp, NULL, key);
-	for(int y=1; y<H_-1; y++) {
-		for(int x=1; x<W_-1; x++) {
-			int r, g, b;
-			if(x < 3 || y < 3 || x >= W_ - 3 || y >= H_ - 3) { r = 24; g = 30; b = 22; }
-			else { float lit = 0.85f + 0.25f * (1.0f - (float)y / H_); r = (int)(86 * lit); g = (int)(104 * lit); b = (int)(70 * lit); }
-			// a small white dome: the bunker
-			float dx = x - W_ / 2.0f, dy = y - (H_ / 2.0f + 3);
-			if(dy <= 0 && dx * dx + dy * dy < 60 && dy > -8) { r = 230; g = 230; b = 220; }
-			if(dy > 0 && dy < 3 && fabsf(dx) < 8) { r = 190; g = 190; b = 180; }
-			*(Uint16 *)((Uint8 *)sp->pixels + y * sp->pitch + x * 2) = (Uint16)SDL_MapRGB(sp->format, r, g, b);
+	for(int y=0; y<H_; y++) {
+		for(int x=0; x<W_; x++) {
+			float dx = x - W_ / 2.0f + 0.5f, dy = y - (H_ - 5.0f);
+			int r = -1, g = 0, b = 0;
+			float d = sqrtf(dx * dx + dy * dy * 1.25f);
+			if(dy <= 0 && d < 16.0f) {
+				float lit = 0.75f + 0.5f * (-dx * 0.4f - dy * 0.7f) / 16.0f;
+				r = (int)(88 * lit); g = (int)(112 * lit); b = (int)(70 * lit);
+				if(d > 14.0f) { r = 235; g = 235; b = 225; }					// white rim
+				if(dy > -9.0f && dy < -6.0f && fabsf(dx) < 6.0f) { r = 18; g = 22; b = 16; }	// the slit
+			}
+			if(dy > 0 && dy < 4.0f && fabsf(dx) < 16.5f) { r = 235; g = 235; b = 225; }		// base line
+			if(r >= 0)
+				*(Uint16 *)((Uint8 *)sp->pixels + y * sp->pitch + x * 2) = (Uint16)SDL_MapRGB(sp->format, r > 255 ? 255 : r, g > 255 ? 255 : g, b > 255 ? 255 : b);
 		}
 	}
 	SDL_SetColorKey(sp, SDL_SRCCOLORKEY, key);
@@ -1330,7 +1345,14 @@ bool enhanced_bunker_absorb(int damage) {
 	return true;
 }
 
+static void spawn_trap_box(float x, float y, int type);
+
 void enhanced_guardian_killed(float x, float y, int type) {
+	if(RANDF(0, 1) < 0.10f) {				// now and then a trap crate falls out of a guardian as well
+		float tx = x, ty = y;
+		enhanced_unstick(&tx, &ty);
+		spawn_trap_box(tx, ty, (RAND(0, NUM_TRAPS - 1)));
+	}
 	if(bunker_anything())
 		return;
 	float chance = (type == CT_BRUTE) ? (1.0f / 3.0f) : 0.15f;	// rare, but it should turn up: the warden is the best bet
@@ -1433,10 +1455,11 @@ static void bunker_update() {
 }
 
 void enhanced_draw_under(SDL_Surface *bmp) {
+	traps_draw_under(bmp);
 	if(!bunker_floor)
 		return;
 	if(kit.ok && (kit.life > 240 || (kit.life / 8) % 2 == 0)) {
-		blit_center(bmp, glow_spr[3], (int)kit.x, (int)kit.y);
+		blit_center(bmp, glow_item[8], (int)kit.x, (int)kit.y);
 		blit_center(bmp, kit_spr, (int)kit.x, (int)kit.y);
 	}
 	if(bunker.ok)
@@ -1457,6 +1480,379 @@ static void bunker_draw_over(SDL_Surface *bmp) {
 	}
 	if(kit_carried)
 		blit_center(bmp, kit_spr, (int)player.x + 22, (int)player.y - 34);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Traps: crates with a few charges of one kind turn up in the arms (and sometimes from guardians). R2 leaves a trap
+// behind the player: napalm (a field of fire) or spikes (booby-trapped spears that also slow the bugs). A trap hurts
+// the bugs standing on it a little at a time; it has an integrity of its own, which the bugs wear down, and it fades
+// away with time. The player is not affected.
+
+#define TRAP_NAPALM	0
+#define TRAP_SPIKES	1
+#define TRAP_GLUE	2
+#define NUM_TRAPS	3
+#define MAX_TRAPS	6
+#define MAX_TBOXES	3
+
+static const char *TRAP_NAME[NUM_TRAPS] = { "napalm", "spikes", "glue" };
+static const int TRAP_COL[NUM_TRAPS][3] = { {255,140,40}, {196,196,176}, {230,215,70} };
+static const int TRAP_CHARGES[NUM_TRAPS] = { 3, 4, 3 };
+static const float TRAP_RADIUS[NUM_TRAPS] = { 54.0f, 38.0f, 46.0f };
+static const int TRAP_LIFE[NUM_TRAPS] = { 60 * 16, 60 * 40, 60 * 30 };
+static const float TRAP_INTEGRITY[NUM_TRAPS] = { 420.0f, 320.0f, 380.0f };
+static const int TRAP_PERIOD[NUM_TRAPS] = { 5, 8, 6 };			// ticks between damage ticks
+static const int TRAP_DAMAGE[NUM_TRAPS] = { 3, 3, 0 };				// per damage tick (napalm 36 hp/s, spikes 22 hp/s)
+
+struct TRAP {
+	bool ok;
+	int type;
+	float x, y;
+	float integrity;
+	int life;
+};
+struct TBOX {
+	bool ok;
+	float x, y;
+	int type;
+	int life;
+};
+static TRAP traps[MAX_TRAPS];
+static TBOX tbox[MAX_TBOXES];
+static int trap_loaded = -1;
+static int trap_charges = 0;
+static int trap_cool = 0;
+static bool t_prev = false;
+static int tbox_timer = 0;
+static SDL_Surface *tbox_spr[NUM_TRAPS], *spike_spr[3], *glue_spr[3], *fire_glow = NULL;
+
+static void make_trap_sprites() {
+	if(fire_glow)
+		return;
+	// the pickups: a round trap disc in the trap's colour with its symbol in the middle (nothing else is round)
+	for(int t=0; t<NUM_TRAPS; t++) {
+		const int S = 30;
+		SDL_Surface *sp = SDL_CreateRGBSurface(SDL_SWSURFACE, S, S, 16, 0xf800, 0x07e0, 0x001f, 0);
+		Uint32 key = SDL_MapRGB(sp->format, 255, 0, 255);
+		SDL_FillRect(sp, NULL, key);
+		for(int y=0; y<S; y++) for(int x=0; x<S; x++) {
+			float dx = x - S / 2.0f + 0.5f, dy = y - S / 2.0f + 0.5f, d = sqrtf(dx * dx + dy * dy);
+			if(d > 14.5f) continue;
+			int r, g, b;
+			if(d > 11.5f) { r = TRAP_COL[t][0]; g = TRAP_COL[t][1]; b = TRAP_COL[t][2]; if(d > 13.5f) { r /= 2; g /= 2; b /= 2; } }
+			else { float lit = 0.8f + 0.3f * (-dx * 0.4f - dy * 0.5f) / 11.0f; r = (int)(44 * lit); g = (int)(40 * lit); b = (int)(38 * lit); }
+			if(d <= 11.5f) {
+				if(t == TRAP_NAPALM) {			// a flame
+					float w = 6.0f * ((dy + 8) / 16.0f);
+					if(dy > -8 && dy < 8 && fabsf(dx) < (w > 0 ? w : 0) && !(dy > 3 && fabsf(dx) > 3.5f)) { r = 255; g = 130 + (int)((dy + 8) * 7); b = 30; }
+				}
+				else if(t == TRAP_SPIKES) {		// three spears
+					for(int k=-1; k<=1; k++) {
+						float sx = dx - k * 5.0f;
+						if(fabsf(sx) < 1.0f && dy > -4 + abs(k) * 2 && dy < 8) { r = 215; g = 215; b = 200; }
+						if(dy < -3 + abs(k) * 2 + 3 && dy > -7 + abs(k) * 2 && fabsf(sx) < (dy + 7 - abs(k) * 2) * 0.9f) { r = 240; g = 240; b = 230; }
+					}
+				}
+				else {							// a drop of glue
+					float cy = dy - 2.0f;
+					bool body = (dx * dx + cy * cy < 30.0f) || (dy < 2.0f && dy > -8.0f && fabsf(dx) < (dy + 8.0f) * 0.55f);
+					if(body) { r = 232; g = 218; b = 70; if(dx < -1 && dy < 3 && dy > -1) { r = 255; g = 250; b = 190; } }
+				}
+			}
+			*(Uint16 *)((Uint8 *)sp->pixels + y * sp->pitch + x * 2) = (Uint16)SDL_MapRGB(sp->format, r, g, b);
+		}
+		SDL_SetColorKey(sp, SDL_SRCCOLORKEY, key);
+		tbox_spr[t] = sp;
+	}
+	// the spikes laid out on the ground, whole, bent and broken
+	for(int st=0; st<3; st++) {
+		const int S = 84;
+		SDL_Surface *sp = SDL_CreateRGBSurface(SDL_SWSURFACE, S, S, 16, 0xf800, 0x07e0, 0x001f, 0);
+		Uint32 key = SDL_MapRGB(sp->format, 255, 0, 255);
+		SDL_FillRect(sp, NULL, key);
+		for(int k=0; k<9; k++) {
+			float ang = k * 6.2831853f / 9 + 0.3f + (st == 2 ? 0.5f * ((k * 7) % 3 - 1) : 0.0f);
+			float len = (st == 0 ? 30.0f : (st == 1 ? 24.0f : 14.0f)) * (0.85f + 0.15f * ((k * 5) % 3) / 2.0f);
+			for(float t=4; t<len; t+=0.5f) {
+				float w = 2.4f * (1.0f - t / (len + 4));
+				float px = S / 2 + cosf(ang) * t, py = S / 2 + sinf(ang) * t * 0.85f;
+				for(int oy=-2; oy<=2; oy++) for(int ox=-2; ox<=2; ox++) {
+					if(ox * ox + oy * oy > w * w) continue;
+					int x = (int)px + ox, y = (int)py + oy;
+					if(x < 0 || y < 0 || x >= S || y >= S) continue;
+					float lit = 0.7f + 0.5f * (t / len);
+					int v = (int)(150 * lit);
+					*(Uint16 *)((Uint8 *)sp->pixels + y * sp->pitch + x * 2) = (Uint16)SDL_MapRGB(sp->format, v, v - 6, v - 22);
+				}
+			}
+		}
+		// a worn base to which the spears are fixed
+		for(int y=0; y<S; y++) for(int x=0; x<S; x++) {
+			float dx = x - S / 2.0f + 0.5f, dy = (y - S / 2.0f + 0.5f) / 0.85f;
+			if(dx * dx + dy * dy < 36.0f)
+				*(Uint16 *)((Uint8 *)sp->pixels + y * sp->pitch + x * 2) = (Uint16)SDL_MapRGB(sp->format, 60, 46, 34);
+		}
+		SDL_SetColorKey(sp, SDL_SRCCOLORKEY, key);
+		spike_spr[st] = sp;
+	}
+	// the glue puddle: a glossy amber blob, in three states of dryness
+	for(int st=0; st<3; st++) {
+		const int W_ = 104, H_ = 88;
+		SDL_Surface *sp = SDL_CreateRGBSurface(SDL_SWSURFACE, W_, H_, 16, 0xf800, 0x07e0, 0x001f, 0);
+		Uint32 key = SDL_MapRGB(sp->format, 255, 0, 255);
+		SDL_FillRect(sp, NULL, key);
+		for(int y=0; y<H_; y++) for(int x=0; x<W_; x++) {
+			float dx = x - W_ / 2.0f + 0.5f, dy = (y - H_ / 2.0f + 0.5f) / 0.85f;
+			float d = sqrtf(dx * dx + dy * dy), th = atan2f(dy, dx);
+			float edge = 44.0f * (st == 0 ? 1.0f : (st == 1 ? 0.88f : 0.74f)) * (0.88f + 0.08f * sinf(5 * th + 1.0f) + 0.05f * sinf(9 * th + 2.0f));
+			if(d > edge) continue;
+			float depth = 1.0f - d / edge;
+			float lit = 0.8f + 0.35f * (-dx * 0.5f - dy * 0.6f) / 44.0f;
+			float dry = st == 0 ? 0.0f : (st == 1 ? 0.35f : 0.65f);			// dries towards a pale film
+			float r = (200 + 50 * depth * lit) * (1 - dry) + 196 * dry;
+			float g = (176 + 50 * depth * lit) * (1 - dry) + 150 * dry;
+			float b = (50 + 20 * depth) * (1 - dry) + 96 * dry;
+			if(d > edge - 3.0f) { r *= 0.62f; g *= 0.62f; b *= 0.6f; }			// the rim
+			// a glossy highlight and a few bubbles
+			float hx = dx + 14, hy = dy + 14;
+			if(hx * hx * 0.5f + hy * hy < 30.0f && st == 0) { r = 255; g = 252; b = 200; }
+			int hh = (x * 11 + y * 7) % 41;
+			if(st < 2 && hh == 0 && d < edge - 8) { r = 255; g = 250; b = 190; }
+			if(st == 2 && ((x / 4 + y / 4) % 3 == 0)) continue;			// almost gone: patchy
+			*(Uint16 *)((Uint8 *)sp->pixels + y * sp->pitch + x * 2) = (Uint16)SDL_MapRGB(sp->format,
+				(int)fminf(r, 255), (int)fminf(g, 255), (int)fminf(b, 255));
+		}
+		SDL_SetColorKey(sp, SDL_SRCCOLORKEY, key);
+		glue_spr[st] = sp;
+	}
+
+	// the glow of a napalm field
+	{
+		const int S = 128;
+		fire_glow = SDL_CreateRGBSurface(SDL_SWSURFACE, S, S, 32, 0xff, 0xff00, 0xff0000, 0xff000000);
+		for(int y=0; y<S; y++) for(int x=0; x<S; x++) {
+			float d = sqrtf((x - S / 2.0f + 0.5f) * (x - S / 2.0f + 0.5f) + (y - S / 2.0f + 0.5f) * (y - S / 2.0f + 0.5f)) / (S / 2.0f);
+			float a = d >= 1.0f ? 0.0f : (1.0f - d) * (1.0f - d) * 0.55f + (d < 0.6f ? 0.18f : 0.0f);
+			Uint8 *p = (Uint8 *)fire_glow->pixels + y * fire_glow->pitch + x * 4;
+			p[0] = 255; p[1] = 120; p[2] = 30;
+			p[3] = (Uint8)(a * 255);
+		}
+	}
+}
+
+void trap_shift(float dx, float dy) {
+	for(int i=0; i<MAX_TRAPS; i++) { traps[i].x += dx; traps[i].y += dy; }
+	for(int i=0; i<MAX_TBOXES; i++) { tbox[i].x += dx; tbox[i].y += dy; }
+}
+
+static void spawn_trap_box(float x, float y, int type) {
+	for(int i=0; i<MAX_TBOXES; i++) {
+		if(!tbox[i].ok) {
+			tbox[i].ok = true;
+			tbox[i].x = x;
+			tbox[i].y = y;
+			tbox[i].type = type;
+			tbox[i].life = 60 * 60;
+			return;
+		}
+	}
+}
+
+static void lay_trap() {
+	float dx, dy;
+	move_xy(1.0f, add_angle(player.angle, -60), &dx, &dy);			// the way the player aims; the trap goes behind
+	float x = player.x - dx * 26, y = player.y - dy * 26;
+	if(world_blocked((int)x, (int)y, false))
+		{ x = player.x; y = player.y; }
+	for(int i=0; i<MAX_TRAPS; i++) {
+		if(!traps[i].ok) {
+			traps[i].ok = true;
+			traps[i].type = trap_loaded;
+			traps[i].x = x;
+			traps[i].y = y;
+			traps[i].integrity = TRAP_INTEGRITY[trap_loaded];
+			traps[i].life = TRAP_LIFE[trap_loaded];
+			if(trap_loaded == TRAP_NAPALM) {
+				make_crater_sprite();
+				SDL_Rect r;
+				r.x = (int)x - crater_spr->w / 2;
+				r.y = (int)y - crater_spr->h / 2;
+				r.w = crater_spr->w;
+				r.h = crater_spr->h;
+				SDL_BlitSurface(crater_spr, NULL, cur_bground, &r);
+			}
+			if(config.sound)
+				Mix_PlayChannel(-1, snd_throw, 0);
+			trap_charges--;
+			trap_cool = 40;
+			if(trap_charges <= 0)
+				trap_loaded = -1;
+			return;
+		}
+	}
+	set_message("too many traps already");
+}
+
+static void trap_update(int here) {
+	// R2 lays a trap
+	bool t = key[SDLK_t] != 0;
+	if(t && !t_prev && trap_loaded >= 0 && trap_charges > 0 && trap_cool <= 0 && player.ok && !enhanced_in_bunker())
+		lay_trap();
+	t_prev = t;
+	if(trap_cool > 0)
+		trap_cool--;
+
+	// crates turn up now and then while the player is out in an arm
+	if(here > 0 && player.ok) {
+		if(--tbox_timer <= 0) {
+			tbox_timer = 60 * (RAND(70, 120));
+			int have = 0;
+			for(int i=0; i<MAX_TBOXES; i++)
+				if(tbox[i].ok) have++;
+			if(have == 0) {
+				for(int tries=0; tries<50; tries++) {
+					int lx = RAND(100, CELL_W - 100), ly = RAND(100, CELL_H - 100);
+					int x = lx + (CELL_GX[here] - gx) * CELL_W, y = ly + (CELL_GY[here] - gy) * CELL_H;
+					if(world_blocked(x, y, false) || world_blocked(x + 16, y, false) || world_blocked(x - 16, y, false) ||
+					   world_blocked(x, y + 16, false) || world_blocked(x, y - 16, false) || world_thorns(x, y))
+						continue;
+					if(distance((float)x, (float)y, player.x, player.y) < 120)
+						continue;
+					spawn_trap_box((float)x, (float)y, RAND(0, NUM_TRAPS - 1));
+					break;
+				}
+			}
+		}
+	}
+	for(int i=0; i<MAX_TBOXES; i++) {
+		if(!tbox[i].ok)
+			continue;
+		if(--tbox[i].life <= 0) { tbox[i].ok = false; continue; }
+		if(player.ok && distance(player.x, player.y, tbox[i].x, tbox[i].y) < 26) {
+			int type = tbox[i].type;
+			if(trap_loaded == type)
+				trap_charges += TRAP_CHARGES[type];
+			else {
+				trap_loaded = type;
+				trap_charges = TRAP_CHARGES[type];
+			}
+			if(trap_charges > 8)
+				trap_charges = 8;
+			tbox[i].ok = false;
+			char buf[64];
+			snprintf(buf, sizeof(buf), "%s x%d: R2 lays one, stay off it", TRAP_NAME[type], trap_charges);
+			set_message(buf);
+			if(config.sound)
+				Mix_PlayChannel(-1, snd_power_up, 0);
+		}
+	}
+
+	// the traps at work
+	int fires = 0;
+	for(int i=0; i<MAX_TRAPS; i++) {
+		TRAP *tr = &traps[i];
+		if(!tr->ok)
+			continue;
+		int ty = tr->type;
+		tr->life--;
+		if(ty == TRAP_NAPALM)
+			tr->integrity -= TRAP_INTEGRITY[TRAP_NAPALM] / TRAP_LIFE[TRAP_NAPALM] * 1.0f;		// the fuel burns off with time
+		bool tick = (enhanced_ticks + i) % TRAP_PERIOD[ty] == 0;
+		for(CRITTER *c = critter_first; c; c = c->next) {
+			if(c->remove || c->hidden)
+				continue;
+			if(distance(c->x, c->y, tr->x, tr->y) > TRAP_RADIUS[ty] + c->hs * 0.5f)
+				continue;
+			if(ty == TRAP_SPIKES) {			// stuck on the spears: slowed
+				c->dirx *= 0.78f;
+				c->diry *= 0.78f;
+			}
+			if(ty == TRAP_GLUE) {			// stuck fast: the middle holds a bug still, the rim slows it hard
+				c->dirx *= 0.1f;
+				c->diry *= 0.1f;
+				if(distance(c->x, c->y, tr->x, tr->y) < TRAP_RADIUS[TRAP_GLUE] * 0.55f)
+					c->dirx = c->diry = 0;
+				tr->integrity -= 0.25f;		// every bug in it wears it down
+				continue;
+			}
+			if(!tick)
+				continue;
+			int dam = TRAP_DAMAGE[ty];
+			c->health -= dam;
+			tr->integrity -= dam * (ty == TRAP_NAPALM ? 0.5f : 1.0f);
+			if(ty == TRAP_NAPALM && RAND(0,2) == 0)
+				add_particle(c->x + RANDF(-8, 8), c->y + RANDF(-8, 6), RANDF(-0.4, 0.4), RANDF(-1.6, -0.6), 255, RAND(90,170), 20, RAND(8,16));
+			if(ty == TRAP_SPIKES && RAND(0,3) == 0)
+				c->blood(RAND(1,2), RANDF(0, 359));
+			if(c->health <= 0)
+				c->die(RANDF(0, 359));
+		}
+		// the player is no safer on a trap than a bug is: same damage, same slowing, same wear on the trap
+		if(player.ok && !enhanced_in_bunker() && distance(player.x, player.y, tr->x, tr->y) < TRAP_RADIUS[ty]) {
+			if(ty == TRAP_SPIKES) {
+				player.dirx *= 0.78f;
+				player.diry *= 0.78f;
+			}
+			if(ty == TRAP_GLUE) {			// the same for the player, a little less sticky in the middle so it can wade out
+				player.dirx *= 0.15f;
+				player.diry *= 0.15f;
+				tr->integrity -= 0.25f;
+			}
+			if(tick && TRAP_DAMAGE[ty] > 0) {
+				int dam = TRAP_DAMAGE[ty];
+				player.health -= dam;
+				tr->integrity -= dam * (ty == TRAP_NAPALM ? 0.5f : 1.0f);
+				if(ty == TRAP_NAPALM)
+					add_particle(player.x + RANDF(-8, 8), player.y + RANDF(-8, 6), RANDF(-0.4, 0.4), RANDF(-1.6, -0.6), 255, RAND(90,170), 20, RAND(8,16));
+				else
+					add_particle(player.x + RANDF(-8, 8), player.y + RANDF(-4, 8), RANDF(-0.5, 0.5), RANDF(-0.9, 0.1), 200, 40, 40, RAND(8,14));
+				if(player.health <= 0)
+					player.die();
+			}
+		}
+		// flames of a napalm field
+		if(ty == TRAP_NAPALM && fires < 2 && tr->integrity > 0) {
+			fires++;
+			float frac = tr->integrity / TRAP_INTEGRITY[TRAP_NAPALM];
+			if(enhanced_ticks % 2 == 0) {
+				int n = frac > 0.5f ? 2 : 1;
+				for(int k=0; k<n; k++) {
+					float a = RANDF(0, 6.2831853f), r = RANDF(0, TRAP_RADIUS[TRAP_NAPALM] * 0.9f);
+					add_particle(tr->x + cosf(a) * r, tr->y + sinf(a) * r * 0.85f, RANDF(-0.25, 0.25), RANDF(-2.0, -0.8), 255, RAND(80,170), 20, RAND(10,22));
+				}
+			}
+		}
+		if(tr->life <= 0 || tr->integrity <= 0) {
+			tr->ok = false;
+			for(int k=0; k<6; k++)
+				add_particle(tr->x + RANDF(-18, 18), tr->y + RANDF(-10, 10), RANDF(-0.4, 0.4), RANDF(-0.9, -0.3), 120, 110, 100, RAND(14,30));
+		}
+	}
+}
+
+static void traps_draw_under(SDL_Surface *bmp) {
+	if(!fire_glow)
+		return;
+	for(int i=0; i<MAX_TBOXES; i++) {
+		if(tbox[i].ok && (tbox[i].life > 240 || (tbox[i].life / 8) % 2 == 0))
+			{
+				blit_center(bmp, glow_item[4 + tbox[i].type], (int)tbox[i].x, (int)tbox[i].y);
+				blit_center(bmp, tbox_spr[tbox[i].type], (int)tbox[i].x, (int)tbox[i].y);
+			}
+	}
+	for(int i=0; i<MAX_TRAPS; i++) {
+		if(!traps[i].ok)
+			continue;
+		float f = traps[i].integrity / TRAP_INTEGRITY[traps[i].type];
+		float lf = (float)traps[i].life / TRAP_LIFE[traps[i].type];
+		if(lf < f) f = lf;
+		if(traps[i].type == TRAP_SPIKES)
+			blit_center(bmp, spike_spr[f > 0.6f ? 0 : (f > 0.3f ? 1 : 2)], (int)traps[i].x, (int)traps[i].y);
+		else if(traps[i].type == TRAP_GLUE)
+			blit_center(bmp, glue_spr[f > 0.6f ? 0 : (f > 0.3f ? 1 : 2)], (int)traps[i].x, (int)traps[i].y);
+		else if(f > 0.15f)
+			blit_center(bmp, fire_glow, (int)traps[i].x, (int)traps[i].y);
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -1499,26 +1895,30 @@ void enhanced_ammo_hit(float x, float y) {
 }
 
 static SDL_Surface *make_ammo_sprite(int t) {
-	const int W_ = 24, H_ = 18;
+	// special rounds: an upright cartridge, brass casing and a tip in the colour of the rank it is made against
+	const int W_ = 18, H_ = 30;
 	SDL_Surface *sp = SDL_CreateRGBSurface(SDL_SWSURFACE, W_, H_, 16, 0xf800, 0x07e0, 0x001f, 0);
 	Uint32 key = SDL_MapRGB(sp->format, 255, 0, 255);
 	SDL_FillRect(sp, NULL, key);
 	for(int y=0; y<H_; y++) {
 		for(int x=0; x<W_; x++) {
+			float dx = x - W_ / 2.0f + 0.5f;
 			int r = -1, g = 0, b = 0;
-			if(x < 1 || y < 1 || x >= W_ - 1 || y >= H_ - 1) { }
-			else if(x < 2 || y < 2 || x >= W_ - 2 || y >= H_ - 2) { r = 28; g = 26; b = 28; }		// rim
-			else if(y >= 6 && y < 12) {			// the coloured band, in the rank's colour
-				float sh = 0.75f + 0.25f * (1.0f - (float)(y - 6) / 6.0f);
-				r = (int)(AMMO_COL[t][0] * sh); g = (int)(AMMO_COL[t][1] * sh); b = (int)(AMMO_COL[t][2] * sh);
-				if(((x + y) / 3) % 4 == 0) { r /= 2; g /= 2; b /= 2; }									// hazard stripes
+			float lit = 0.8f + 0.35f * (-dx / 7.0f);
+			if(y >= 13 && y < 28 && fabsf(dx) < 6.5f) {				// the casing
+				r = (int)(206 * lit); g = (int)(160 * lit); b = (int)(64 * lit);
+				if(y >= 24) { r = (int)(150 * lit); g = (int)(116 * lit); b = (int)(46 * lit); }		// the rim at the base
+				if(y >= 13 && y < 17) { r = (int)(AMMO_COL[t][0] * lit); g = (int)(AMMO_COL[t][1] * lit); b = (int)(AMMO_COL[t][2] * lit); }
 			}
-			else {
-				float lit = 0.8f + 0.3f * (1.0f - (float)y / H_);
-				r = (int)(92 * lit); g = (int)(88 * lit); b = (int)(90 * lit);
+			else if(y >= 2 && y < 13) {								// the bullet, pointed
+				float w = 6.0f * sqrtf((y - 1.5f) / 11.5f);
+				if(fabsf(dx) < w) { r = (int)(AMMO_COL[t][0] * lit * 1.1f); g = (int)(AMMO_COL[t][1] * lit * 1.1f); b = (int)(AMMO_COL[t][2] * lit * 1.1f); }
 			}
-			if(r >= 0)
+			if(r >= 0) {
+				bool edge = (fabsf(dx) > 5.2f && y >= 13) || y == 28 || y == 2;
+				if(edge) { r /= 2; g /= 2; b /= 2; }
 				*(Uint16 *)((Uint8 *)sp->pixels + y * sp->pitch + x * 2) = (Uint16)SDL_MapRGB(sp->format, r > 255 ? 255 : r, g > 255 ? 255 : g, b > 255 ? 255 : b);
+			}
 		}
 	}
 	SDL_SetColorKey(sp, SDL_SRCCOLORKEY, key);
@@ -1608,6 +2008,7 @@ void enhanced_shift(float dx, float dy) {
 	}
 	kit.x += dx; kit.y += dy;
 	bunker.x += dx; bunker.y += dy;
+	trap_shift(dx, dy);
 	shift_critters(dx, dy);
 	shift_gibs(dx, dy);
 	shift_bombs(dx, dy);
@@ -1728,6 +2129,7 @@ void enhanced_update() {
 	burrow_update(cell_index(gx, gy));
 	heal_plant_update(cell_index(gx, gy));
 	bunker_update();
+	trap_update(cell_index(gx, gy));
 
 	// 3. the hive watches
 	if(enhanced_ticks % 60 == 0)
@@ -1808,6 +2210,16 @@ void enhanced_begin() {
 	thorn_out = 100;
 	thorn_hit = 0;
 	make_bunker_sprites();
+	make_trap_sprites();
+	for(int i=0; i<MAX_TRAPS; i++)
+		traps[i].ok = false;
+	for(int i=0; i<MAX_TBOXES; i++)
+		tbox[i].ok = false;
+	trap_loaded = -1;
+	trap_charges = 0;
+	trap_cool = 0;
+	t_prev = false;
+	tbox_timer = 60 * (RAND(60, 100));
 	kit.ok = false;
 	kit_carried = false;
 	bunker.ok = false;
@@ -1850,6 +2262,28 @@ void enhanced_begin() {
 		hplant_timer = 1;
 	if(getenv("FORMIDO_HURT"))			// start hurt
 		player.health = atoi(getenv("FORMIDO_HURT"));
+	if(getenv("FORMIDO_TRAP")) {		// start with traps: 0 napalm, 1 spikes
+		trap_loaded = atoi(getenv("FORMIDO_TRAP")) % NUM_TRAPS;
+		trap_charges = 6;
+	}
+	if(getenv("FORMIDO_SHOWITEMS")) {	// lay every kind of pickup out on the centre screen
+		int y0 = 70;
+		for(int i=0; i<4; i++)
+			create_power_up_at(70 + i * 70, y0, i, 60 * 600);									// the classic ones
+		for(int i=0; i<4; i++) {
+			abox[i].ok = true; abox[i].x = 70.0f + i * 70; abox[i].y = (float)(y0 + 70); abox[i].type = i; abox[i].life = 60 * 600;
+		}
+		for(int i=0; i<NUM_TRAPS; i++) {
+			tbox[i].ok = true; tbox[i].x = 70.0f + i * 70; tbox[i].y = (float)(y0 + 140); tbox[i].type = i; tbox[i].life = 60 * 600;
+		}
+		kit.ok = true; kit.x = 280; kit.y = (float)(y0 + 140); kit.life = 60 * 600;
+		hplant[0].ok = true; hplant[0].x = 70; hplant[0].y = (float)(y0 + 235); hplant[0].pool = 40; hplant[0].life = 60 * 600;
+		hplant[1].ok = true; hplant[1].x = 140; hplant[1].y = (float)(y0 + 235); hplant[1].pool = 14; hplant[1].life = 60 * 600;
+		traps[0].ok = true; traps[0].type = TRAP_SPIKES; traps[0].x = 400; traps[0].y = 120; traps[0].integrity = 320; traps[0].life = 60 * 600;
+		traps[1].ok = true; traps[1].type = TRAP_GLUE; traps[1].x = 520; traps[1].y = 130; traps[1].integrity = 380; traps[1].life = 60 * 600;
+		traps[2].ok = true; traps[2].type = TRAP_GLUE; traps[2].x = 520; traps[2].y = 250; traps[2].integrity = 150; traps[2].life = 60 * 600;
+		traps[3].ok = true; traps[3].type = TRAP_NAPALM; traps[3].x = 400; traps[3].y = 250; traps[3].integrity = 420; traps[3].life = 60 * 600;
+	}
 	if(getenv("FORMIDO_KIT"))			// start carrying a bunker kit
 		kit_carried = true;
 	if(getenv("FORMIDO_BURROW"))		// a burrower soon, in whichever arm the player is in
@@ -1975,7 +2409,10 @@ static void draw_world_overlays(SDL_Surface *bmp) {
 	// special ammunition lying about
 	for(int i=0; i<MAX_AMMO_BOXES; i++) {
 		if(abox[i].ok && (abox[i].life > 180 || (abox[i].life / 6) % 2 == 0))
-			blit_center(bmp, ammo_spr[abox[i].type], (int)abox[i].x, (int)abox[i].y);
+			{
+				blit_center(bmp, glow_item[abox[i].type], (int)abox[i].x, (int)abox[i].y);
+				blit_center(bmp, ammo_spr[abox[i].type], (int)abox[i].x, (int)abox[i].y);
+			}
 	}
 
 	bunker_draw_over(bmp);
@@ -2049,6 +2486,18 @@ void enhanced_draw(SDL_Surface *bmp) {
 			rect(bmp, 8, SCREEN_H - 50, 7, 7, ARM_COL[c][0], ARM_COL[c][1], ARM_COL[c][2]);
 			font_write(bmp, FONT_NORMAL, 20, SCREEN_H - 55, line);
 		}
+	}
+
+	// traps and the bunker kit
+	if(trap_loaded >= 0) {
+		char line[64];
+		snprintf(line, sizeof(line), "traps: %s x%d  (R2)", TRAP_NAME[trap_loaded], trap_charges);
+		rect(bmp, 8, SCREEN_H - 94, 7, 7, TRAP_COL[trap_loaded][0], TRAP_COL[trap_loaded][1], TRAP_COL[trap_loaded][2]);
+		font_write(bmp, FONT_NORMAL, 20, SCREEN_H - 99, line);
+	}
+	if(kit_carried) {
+		rect(bmp, 8, SCREEN_H - 116, 7, 7, 220, 220, 200);
+		font_write(bmp, FONT_NORMAL, 20, SCREEN_H - 121, (char *)"bunker kit  (R1)");
 	}
 
 	// the rounds in the gun

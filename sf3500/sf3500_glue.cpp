@@ -563,6 +563,7 @@ static const KeyMap g_map[] = {
     { JK_B,      SDLK_ESCAPE, C_MENU,   0 },
     { JK_R1,     SDLK_RCTRL,  C_TWIN,   0 },
     { JK_R1,     SDLK_r,      C_ENH,    0 },
+    { JK_R2,     SDLK_t,      C_ENH,    0 },
     { JK_START,  SDLK_p,      C_MATCH,  0 },
     { JK_START,  SDLK_RETURN, C_MENU,   0 },
     { JK_SELECT, SDLK_ESCAPE, C_ALWAYS, 0 },
