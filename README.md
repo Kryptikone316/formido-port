@@ -111,6 +111,9 @@ The main menu has **play classic game** (the original, untouched) and **play enh
   game R1 is the bunker button, so A (without L1) is the way to fire along the aim.
 - **Laser sight.** A thin red line from the muzzle along the line of fire (up to 260 pixels, ending at a wall, crag or bug,
   with a small dot). Settings: off, enhanced (the default: only in the enhanced game) or always.
+- **No dead-end slots.** The arms' collision is cleaned so that every gap is at least body-wide (about 40 pixels): the
+  narrow slots, cracks and gorges along the cliffs that a player and a bug could wedge in are closed up as rock (the
+  pictures show them as rock too), and every arm is one connected area open to the centre screen.
 - **Walkable ground.** The arms' collision maps are cleaned so that nothing thin, no tiny pocket and no unreachable
   corner is left to catch on, and crags keep clear of the cliffs. Anything (player or bug) that ends up inside rock,
   shoved there by a swarm, a blast or a burst, is put on the nearest open ground at once.

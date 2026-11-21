@@ -132,12 +132,17 @@ def draw_plant(draw, rng, cx, cy, size, stalk=(104, 46, 30), petal=lambda c: (in
                 px, py = nx, ny
 
 
+BODY = 19
+
+
 def clean_collision(solid, inward):
     """Make the collision map easy to walk: no thin rock spikes, no tiny pockets or narrow fingers a body would
     wedge in, nothing free that cannot be reached from the open side."""
     solid = ndi.binary_opening(solid, iterations=2)
     free = ~solid
-    core = ndi.binary_erosion(free, iterations=7)			# places where a body of radius 7 can stand
+    # places where a body of radius BODY can stand: the player is about 40 pixels across and the bugs up to 56, so a gap
+    # narrower than that is a trap (slots, cracks and dead-end gorges along the cliffs); it is filled in as rock
+    core = ndi.binary_erosion(free, iterations=BODY)
     lab, n = ndi.label(core)
     edge = np.zeros((H, W), bool)
     if inward == "bottom":
@@ -150,9 +155,7 @@ def clean_collision(solid, inward):
         edge[:, W - 40:] = True
     keep_labels = np.unique(lab[edge & (lab > 0)])
     keep = np.isin(lab, keep_labels) & (lab > 0)
-    reach = ndi.binary_dilation(keep, iterations=7) & free
-    # the open side itself always stays free
-    reach |= edge & free
+    reach = ndi.binary_dilation(keep, iterations=BODY) & free
     return ~reach
 
 
@@ -276,6 +279,10 @@ def make_arm(name, sand, seed):
     cliff = band > 0
     solid |= cliff
     solid = clean_collision(solid, inward)
+    # whatever the cleanup closed (slots, cracks, pockets) is drawn as cliff rock too, so picture and collision agree
+    extra = solid & ~cliff & ~ndi.binary_dilation(crag, iterations=3)
+    cliff = cliff | extra
+    band = np.where(extra, np.maximum(band, 10.0), band)
     ch = np.clip(band, 0, 70)
     cll = light(ch * 0.9 + fbm(rng, (H, W), (14, 7), (1.0, 0.7)) * 10.0, 0.22)
     cbse = 0.45 + ch / 120.0

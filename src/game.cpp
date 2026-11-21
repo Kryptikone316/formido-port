@@ -658,6 +658,10 @@ void start_game() {
 #ifdef SF3500
 	sf3500_set_in_game(0);
 	enhanced_end();
+	// Leaving from the Paused screen (Select + Start, or the quit signal) must not leave the timer paused: the wipe
+	// effect below and the menus wait for timer ticks, and a paused timer never ticks, which hung the console.
+	game_paused = false;
+	timer_count = 0;
 #endif
 
 	// ..and silence, please
