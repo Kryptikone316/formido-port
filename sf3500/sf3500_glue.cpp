@@ -489,10 +489,12 @@ void Mix_CloseAudio(void)
 static bool g_hw = false;
 static bool g_inited = false;
 static int g_in_game = 0;
+static bool g_twin = false;
 static long long g_last_present_ms = 0;
 static int g_frame_ms = 33; /* never present faster than ~30 fps: steadier picture and sound on this device */
 
 void sf3500_set_in_game(int in_game) { g_in_game = in_game; }
+void sf3500_set_twin_stick(int on) { g_twin = on != 0; }
 
 #ifdef FORMIDO_TESTHOOKS
 static void test_shot(SDL_Surface *s);
@@ -515,28 +517,45 @@ int sf3500_flip(SDL_Surface *s)
     return 0;
 }
 
+enum Ctx {
+    C_ALWAYS,
+    C_MATCH,    /* in a match, either scheme */
+    C_MENU,     /* anywhere but a match */
+    C_NOTWIN,   /* not (a match with the twin-stick scheme) */
+    C_TWIN      /* a match with the twin-stick scheme */
+};
+
 struct KeyMap {
     int jk;
     SDLKey sym;
-    int ctx;    /* 0 always, 1 only in a match, 2 only outside a match */
+    Ctx ctx;
     int repeat; /* 1: pressing again while held (menus, name entry), like a keyboard's key repeat */
 };
 
-/* Buttons -> keys. A also presses Return so it selects in the menus. B is Special in a match
- * and "back" (Escape) in menus; Start pauses in a match and selects in menus; Select is Escape
- * (in a match: ends it, like the original). */
+/* Buttons -> keys.
+ *  Menus and name entry: A selects (Return), B backs out (Escape), Start selects.
+ *  Tank scheme (original controls): D-pad drives, A shoots, B is Special.
+ *  Twin-stick scheme: D-pad walks, X/A/B/Y aim and fire up/right/down/left (the game reads them as
+ *  i/l/k/j), R1 fires along the current aim, L1 is Special.
+ *  Both: Start pauses, Select ends the match (Escape). */
 static const KeyMap g_map[] = {
-    { JK_UP,     SDLK_UP,     0, 1 },
-    { JK_DOWN,   SDLK_DOWN,   0, 1 },
-    { JK_LEFT,   SDLK_LEFT,   0, 1 },
-    { JK_RIGHT,  SDLK_RIGHT,  0, 1 },
-    { JK_A,      SDLK_RCTRL,  0, 0 },
-    { JK_A,      SDLK_RETURN, 0, 0 },
-    { JK_B,      SDLK_RSHIFT, 0, 0 },
-    { JK_B,      SDLK_ESCAPE, 2, 0 },
-    { JK_START,  SDLK_p,      1, 0 },
-    { JK_START,  SDLK_RETURN, 2, 0 },
-    { JK_SELECT, SDLK_ESCAPE, 0, 0 },
+    { JK_UP,     SDLK_UP,     C_ALWAYS, 1 },
+    { JK_DOWN,   SDLK_DOWN,   C_ALWAYS, 1 },
+    { JK_LEFT,   SDLK_LEFT,   C_ALWAYS, 1 },
+    { JK_RIGHT,  SDLK_RIGHT,  C_ALWAYS, 1 },
+    { JK_A,      SDLK_RETURN, C_ALWAYS, 0 },
+    { JK_A,      SDLK_RCTRL,  C_NOTWIN, 0 },
+    { JK_A,      SDLK_l,      C_TWIN,   0 },
+    { JK_B,      SDLK_RSHIFT, C_NOTWIN, 0 },
+    { JK_B,      SDLK_ESCAPE, C_MENU,   0 },
+    { JK_B,      SDLK_k,      C_TWIN,   0 },
+    { JK_X,      SDLK_i,      C_TWIN,   0 },
+    { JK_Y,      SDLK_j,      C_TWIN,   0 },
+    { JK_R1,     SDLK_RCTRL,  C_TWIN,   0 },
+    { JK_L1,     SDLK_RSHIFT, C_TWIN,   0 },
+    { JK_START,  SDLK_p,      C_MATCH,  0 },
+    { JK_START,  SDLK_RETURN, C_MENU,   0 },
+    { JK_SELECT, SDLK_ESCAPE, C_ALWAYS, 0 },
 };
 
 static void push_key(SDLKey sym, bool down)
@@ -619,8 +638,14 @@ static void pad_update(void)
     for (unsigned i = 0; i < sizeof(g_map) / sizeof(g_map[0]); i++) {
         const KeyMap &m = g_map[i];
         bool active = (cur & (1u << m.jk)) != 0;
-        if (m.ctx == 1 && !g_in_game) active = false;
-        if (m.ctx == 2 && g_in_game) active = false;
+        bool twin = g_in_game && g_twin;
+        switch (m.ctx) {
+        case C_MATCH:  if (!g_in_game) active = false; break;
+        case C_MENU:   if (g_in_game) active = false; break;
+        case C_NOTWIN: if (twin) active = false; break;
+        case C_TWIN:   if (!twin) active = false; break;
+        default: break;
+        }
         if (active != g_down[i]) {
             g_down[i] = active;
             push_key(m.sym, active);

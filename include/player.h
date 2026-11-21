@@ -70,6 +70,7 @@ public:
 	bool ok;					// Is the player alive?
 
 	float angle;				// Angle of heading
+	float aim;					// Direction of fire (twin-stick controls on the SF3500)
 	float mass;					// Mass of the player
 
 	float frame;				// Animation frame
@@ -101,6 +102,7 @@ public:
 	void move();				// Movement function
 	void draw(SDL_Surface *bmp);// Drawing function
 	void shoot();				// Shoot
+	bool firing();				// Is a fire control held?
 	void blood(int am, float angle);	// Pour some blood
 	void shout();				// Shout
 	bool col_critter();			// Collisions with critters

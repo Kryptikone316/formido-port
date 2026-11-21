@@ -54,6 +54,10 @@ void load_config(char *file, CONFIG *conf) {
 	fscanf(f, "key_right = %d\n", &(conf->key_right));
 	fscanf(f, "key_shoot = %d\n", &(conf->key_shoot));
 	fscanf(f, "key_special = %d\n", &(conf->key_special));
+#ifdef SF3500
+	conf->controls = 1;	// default when the file has no such line (older saves)
+	fscanf(f, "controls = %d\n", &(conf->controls));
+#endif
 	fclose(f);
 
 #ifdef SF3500
@@ -97,6 +101,9 @@ void save_config(char *file, CONFIG *conf) {
 	fprintf(f, "key_right = %d\n", (conf->key_right));
 	fprintf(f, "key_shoot = %d\n", (conf->key_shoot));
 	fprintf(f, "key_special = %d\n", (conf->key_special));
+#ifdef SF3500
+	fprintf(f, "controls = %d\n", (conf->controls));
+#endif
 
 	fclose(f);
 }

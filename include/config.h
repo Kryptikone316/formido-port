@@ -40,6 +40,8 @@ struct CONFIG {
 	int key_right;
 	int key_shoot;
 	int key_special;
+	// Datafrog SF3500: 1 = twin-stick style (D-pad walks, face buttons aim and fire), 0 = original tank controls
+	int controls;
 };
 
 // Load config from file

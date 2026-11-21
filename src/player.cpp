@@ -303,7 +303,7 @@ void PLAYER::draw(SDL_Surface *bmp) {
 	bool draw_gun_flame = false;
 
 	if(ok) {
-		if(!key[key_shoot]) {
+		if(!firing()) {
 			// We're not shooting
 			switch((int)frame) {
 				case 0: f = 0; break;
@@ -500,6 +500,51 @@ void PLAYER::move() {
 		drugs--;
 
 	// Check keypresses
+#ifdef SF3500
+	if(config.controls == 1) {
+		// Twin-stick style: the D-pad walks in the direction pressed, the face buttons aim and fire
+		// that way (X up, A right, B down, Y left, two together for a diagonal), R1 fires along the
+		// current aim. Without an aim button the player faces the way it walks.
+		int mx = (key[key_right] ? 1 : 0) - (key[key_left] ? 1 : 0);
+		int my = (key[key_down] ? 1 : 0) - (key[key_up] ? 1 : 0);
+		int ax = (key[SDLK_l] ? 1 : 0) - (key[SDLK_j] ? 1 : 0);
+		int ay = (key[SDLK_k] ? 1 : 0) - (key[SDLK_i] ? 1 : 0);
+
+		if(mx || my) {
+			float l = (mx && my) ? 0.7071f : 1.0f;
+			dirx += mx * 2 * l;
+			diry += my * 2 * l;
+		}
+
+		bool have_want = false;
+		float want = 0;
+		if(ax || ay) {
+			want = (float)(atan2((double)ax, (double)-ay) * 180.0 / 3.14159265358979);
+			have_want = true;
+		}
+		else if((mx || my) && !key[key_shoot]) {
+			want = (float)(atan2((double)mx, (double)-my) * 180.0 / 3.14159265358979);
+			have_want = true;
+		}
+		if(have_want) {
+			if(want < 0)
+				want += 360;
+			float diff = want - aim;
+			while(diff > 180)
+				diff -= 360;
+			while(diff < -180)
+				diff += 360;
+			if(diff > 40)
+				diff = 40;
+			else if(diff < -40)
+				diff = -40;
+			aim = add_angle(aim, diff);
+		}
+		// The sprite's gun hangs 60 degrees to the left of the body, and bullets leave along angle-60
+		angle = add_angle(aim, 60);
+	}
+	else {
+#endif
 	// Turning
 	if(key[key_left])
 		angle = add_angle(angle, -6);
@@ -511,9 +556,12 @@ void PLAYER::move() {
 		move_xy(2, angle, &dirx, &diry);
 	else if(key[key_down])
 		move_xy(-1, angle, &dirx,&diry);
+#ifdef SF3500
+	}
+#endif
 
 	// Check for shooting
-	if(reload == 0 && key[key_shoot]) {
+	if(reload == 0 && firing()) {
 		// Shoot
 		shoot();
 
@@ -538,7 +586,7 @@ void PLAYER::move() {
 		
 	}
 	// Stop the shooting sound
-	else if(!key[key_shoot]) {
+	else if(!firing()) {
 		if(shoot_chan != -1 && config.sound) {
 			Mix_HaltChannel(shoot_chan);
 			shoot_chan = -1;
@@ -548,11 +596,19 @@ void PLAYER::move() {
 	// Invoke special weapon?
 	if(reload2 == 0 && special_weapon != 0 && key[key_special]) {
 		if(special_weapon == POWER_UP_BOMB) {
+			#ifdef SF3500
+			create_bomb(x,y, add_angle(angle, (config.controls == 1) ? RANDF(-65,-55) : RANDF(-45,-35)));	// twin-stick: thrown where the bullets go
+#else
 			create_bomb(x,y, add_angle(angle, RANDF(-45,-35)));
+#endif
 			reload2 = 10;
 		}
 		else if(special_weapon == POWER_UP_MINE) {
+			#ifdef SF3500
+			create_mine(x,y, add_angle(angle, (config.controls == 1) ? RANDF(-65,-55) : RANDF(-45,-35)));	// twin-stick: thrown where the bullets go
+#else
 			create_mine(x,y, add_angle(angle, RANDF(-45,-35)));
+#endif
 			reload2 = 30;
 		}
 		// Play sound
@@ -612,6 +668,16 @@ void PLAYER::move() {
 }
 
 
+// Is a fire control held? (the shoot key, or in twin-stick mode any aim button)
+bool PLAYER::firing() {
+#ifdef SF3500
+	if(config.controls == 1 && (key[SDLK_i] || key[SDLK_j] || key[SDLK_k] || key[SDLK_l]))
+		return true;
+#endif
+	return key[key_shoot] != 0;
+}
+
+
 // Clear the player
 void PLAYER::clear() {
 
@@ -620,6 +686,7 @@ void PLAYER::clear() {
 
 	ok = true;
 	angle = 0;
+	aim = 0;
 	mass = 1.0;
 
 	radius = 10;

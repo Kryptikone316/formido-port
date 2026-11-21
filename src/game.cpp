@@ -472,6 +472,7 @@ void start_game() {
 	main_loop_done = false;
 	bool f12_down = false;
 #ifdef SF3500
+	sf3500_set_twin_stick(config.controls == 1);
 	sf3500_set_in_game(1);
 #endif
 	while(!main_loop_done) {

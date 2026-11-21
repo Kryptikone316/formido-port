@@ -13,6 +13,7 @@ Original game: https://mhgames.org/formido/
   dummy video driver and every frame is handed to the handheld's display driver; the gamepad
   becomes key presses; the few SDL_mixer calls the game makes are mixed in software and played
   through the handheld's audio driver; images (PCX/PNG/JPEG/BMP) are decoded without SDL_image.
+- Twin-stick controls (D-pad walks, face buttons aim and fire) as the default; the original tank controls stay available with `controls = 0` in `formido.cfg`.
 - High-score names are entered with the D-pad (the original reads a keyboard).
 - The key-binding rows of the settings menu are inert: the gamepad has one fixed layout.
 - Source changes are marked `#ifdef SF3500`; everything else is the upstream 1.0.1 source.

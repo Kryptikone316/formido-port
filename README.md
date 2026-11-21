@@ -6,16 +6,27 @@ Datafrog SF3500 handheld (MIPS32r2, SDL 1.2, no audio device). Upstream sources 
 
 ## Controls
 
-| Button | Menus | In a match |
-|---|---|---|
-| D-pad | choose | up/down move, left/right turn |
-| A | select | shoot |
-| B | back | special (throw the power-up you hold) |
-| Start | select | pause |
-| Select | back | end the match |
-| Select + Start | leave the game from anywhere | |
+Menus: D-pad chooses, A or Start selects, B or Select goes back.
+
+In a match (default, `controls = 1` in `formido.cfg`): twin-stick style.
+
+| Button | Action |
+|---|---|
+| D-pad | walk in the direction pressed (8 ways); you face the way you walk |
+| X / A / B / Y | aim and fire up / right / down / left; two together aim diagonally; you can walk one way and fire another |
+| R1 | fire along the current aim |
+| L1 | special (throw the power-up you hold, in the aim direction) |
+| Start | pause |
+| Select | end the match |
+| Select + Start | leave the game from anywhere |
+
+`controls = 0` restores the original tank controls: Left/Right turn, Up/Down walk along the facing, A shoots,
+B is special.
 
 High-score name: Up/Down change the letter, Right takes it, Left or B steps back, A finishes.
+
+Note: the sprite's gun hangs 60 degrees left of the body and bullets leave along `angle - 60`; twin-stick mode keeps a
+separate `aim` and sets `angle = aim + 60`, so the picture and the bullets agree.
 
 ## Build
 

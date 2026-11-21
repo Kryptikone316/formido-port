@@ -27,6 +27,9 @@ int sf3500_poll(SDL_Event *e);
  * the B and Start buttons do. */
 void sf3500_set_in_game(int in_game);
 
+/* Which control scheme a match uses (1 = twin-stick, 0 = the original tank controls). */
+void sf3500_set_twin_stick(int on);
+
 #ifdef __cplusplus
 }
 #endif
