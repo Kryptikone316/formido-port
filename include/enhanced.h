@@ -69,6 +69,10 @@ bool world_in_centre();
 // Collision lookup over all five screens (x,y in current-screen coordinates)
 bool world_blocked(int x, int y, bool bullet);
 
+// If (*x,*y) is inside rock (shoved there by a swarm, a blast or a burst), move it to the nearest open ground;
+// returns true when it moved
+bool enhanced_unstick(float *x, float *y);
+
 // Where a bug at (x,y) should walk to: the player, or the doorway to the centre screen
 void world_target(float x, float y, float *tx, float *ty);
 

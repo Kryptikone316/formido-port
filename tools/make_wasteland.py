@@ -132,6 +132,30 @@ def draw_plant(draw, rng, cx, cy, size, stalk=(104, 46, 30), petal=lambda c: (in
                 px, py = nx, ny
 
 
+def clean_collision(solid, inward):
+    """Make the collision map easy to walk: no thin rock spikes, no tiny pockets or narrow fingers a body would
+    wedge in, nothing free that cannot be reached from the open side."""
+    solid = ndi.binary_opening(solid, iterations=2)
+    free = ~solid
+    core = ndi.binary_erosion(free, iterations=7)			# places where a body of radius 7 can stand
+    lab, n = ndi.label(core)
+    edge = np.zeros((H, W), bool)
+    if inward == "bottom":
+        edge[H - 40:, :] = True
+    elif inward == "top":
+        edge[:40, :] = True
+    elif inward == "left":
+        edge[:, :40] = True
+    else:
+        edge[:, W - 40:] = True
+    keep_labels = np.unique(lab[edge & (lab > 0)])
+    keep = np.isin(lab, keep_labels) & (lab > 0)
+    reach = ndi.binary_dilation(keep, iterations=7) & free
+    # the open side itself always stays free
+    reach |= edge & free
+    return ~reach
+
+
 def make_arm(name, sand, seed):
     rng = np.random.default_rng(seed)
     inward = {"n": "bottom", "s": "top", "e": "left", "w": "right"}[name]
@@ -176,6 +200,18 @@ def make_arm(name, sand, seed):
         keep_clear[:, W - 190:] = True
 
     # 4. crags
+    # distance of every pixel to the cliff walls (computed from the same band as step 5 below)
+    band0 = np.zeros((H, W), np.float32)
+    jag0 = ndi.gaussian_filter(fbm(np.random.default_rng(seed + 99), (H, W), (26, 11), (1.0, 0.6)), 0.6) * 56.0
+    if inward != "top":
+        band0 = np.maximum(band0, 34.0 + jag0 - yy)
+    if inward != "bottom":
+        band0 = np.maximum(band0, 34.0 + jag0 - (H - 1 - yy))
+    if inward != "left":
+        band0 = np.maximum(band0, 34.0 + jag0 - xx)
+    if inward != "right":
+        band0 = np.maximum(band0, 34.0 + jag0 - (W - 1 - xx))
+    dcliff = ndi.distance_transform_edt(~(band0 > 0))
     centres = []
     for _ in range(500):
         if len(centres) >= 7:
@@ -186,6 +222,8 @@ def make_arm(name, sand, seed):
         if any(keep_clear[int(min(max(py, 0), H - 1)), int(min(max(px, 0), W - 1))] for px, py in probe):
             continue
         if any((cx - ox) ** 2 + (cy - oy) ** 2 < (r + orr + 84) ** 2 for ox, oy, orr in centres):
+            continue
+        if dcliff[int(cy), int(cx)] < r + 60:			# leave room to walk between a crag and the cliff
             continue
         centres.append((cx, cy, r))
     height = np.zeros((H, W), np.float32)
@@ -236,6 +274,7 @@ def make_arm(name, sand, seed):
         band = np.maximum(band, depth + jag - (W - 1 - xx))
     cliff = band > 0
     solid |= cliff
+    solid = clean_collision(solid, inward)
     ch = np.clip(band, 0, 70)
     cll = light(ch * 0.9 + fbm(rng, (H, W), (14, 7), (1.0, 0.7)) * 10.0, 0.22)
     cbse = 0.45 + ch / 120.0

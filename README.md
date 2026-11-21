@@ -60,6 +60,11 @@ The main menu has **play classic game** (the original, untouched) and **play enh
   little less to the others. Each load is 160 rounds and spoils after 45 seconds, whichever comes first; then you shoot
   normally again. The hive notices what you fire: the longer you use one kind, the fewer of its rank it sends, with a
   message when it adapts.
+- **Walkable ground.** The arms' collision maps are cleaned so that nothing thin, no tiny pocket and no unreachable
+  corner is left to catch on, and crags keep clear of the cliffs. Anything (player or bug) that ends up inside rock,
+  shoved there by a swarm, a blast or a burst, is put on the nearest open ground at once.
+- **No recoil.** Firing does not push you or shake your aim with the twin-stick preset or in the enhanced game; the
+  classic game with the original tank controls keeps the original recoil.
 - **Red plants are thorns.** They stand on open sand, clear of rock. You can walk straight through a patch: touching one
   costs 1 hit point, and standing in it costs about 1 every 25 ticks (a scratch, nothing more).
 - **Healing plants.** A rare green plant grows in the arms (never on the platform screen): standing within about 50

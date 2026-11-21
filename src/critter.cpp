@@ -339,6 +339,17 @@ void CRITTER::move() {
 	}
 #endif
 
+#ifdef SF3500
+	// a bug shoved into rock is put back on open ground
+	if(enhanced && world_blocked((int)x, (int)y, false)) {
+		if(enhanced_unstick(&x, &y)) {
+			sx = x;
+			sy = y;
+			dirx = diry = 0;
+		}
+	}
+#endif
+
 	// Advance the animation
 	frame += 0.15;
 	if((int)frame > 3)

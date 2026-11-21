@@ -157,6 +157,29 @@ bool world_blocked(int x, int y, bool bullet) {
 	return bullet ? (v == 1) : (v == 1 || v == 2);
 }
 
+static bool open_spot(int x, int y) {
+	return !world_blocked(x, y, false) && !world_blocked(x + 5, y, false) && !world_blocked(x - 5, y, false) &&
+		!world_blocked(x, y + 5, false) && !world_blocked(x, y - 5, false);
+}
+
+bool enhanced_unstick(float *px, float *py) {
+	int x = (int)*px, y = (int)*py;
+	if(!world_blocked(x, y, false))
+		return false;
+	for(int r=2; r<=100; r+=2) {
+		for(int k=0; k<24; k++) {
+			float a = k * 6.2831853f / 24;
+			int nx = x + (int)(cosf(a) * r), ny = y + (int)(sinf(a) * r);
+			if(open_spot(nx, ny)) {
+				*px = (float)nx;
+				*py = (float)ny;
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
 // Thorns (the red plants' patches): can be walked through
 static bool world_thorns(int x, int y) {
 	int cx = gx + fdiv(x, CELL_W), cy = gy + fdiv(y, CELL_H);
@@ -1352,9 +1375,17 @@ static void spawn_arm_loot(int ci) {
 void enhanced_update() {
 	enhanced_ticks++;
 #ifdef FORMIDO_TESTHOOKS
-	if(enhanced_ticks % 60 == 0 && getenv("FORMIDO_HPLOG"))
-		fprintf(stderr, "tick %ld hp %d at %d,%d thorn %d out %d cell %d,%d ok %d\n", enhanced_ticks, player.health, (int)player.x, (int)player.y, (int)world_thorns((int)player.x, (int)player.y), thorn_out, gx, gy, (int)player.ok);
+	if(getenv("FORMIDO_HPLOG") && enhanced_ticks % (atoi(getenv("FORMIDO_HPLOG")) > 1 ? atoi(getenv("FORMIDO_HPLOG")) : 60) == 0)
+		fprintf(stderr, "tick %ld hp %d at %d,%d blocked %d thorn %d cell %d,%d\n", enhanced_ticks, player.health, (int)player.x, (int)player.y, (int)world_blocked((int)player.x, (int)player.y, false), (int)world_thorns((int)player.x, (int)player.y), gx, gy);
 #endif
+
+	// 0. never stay inside rock: a shove from the swarm, a blast or a burst can leave the player where no
+	// direction is free
+	if(player.ok && enhanced_unstick(&player.x, &player.y)) {
+		player.sx = player.x;
+		player.sy = player.y;
+		player.dirx = player.diry = 0;
+	}
 
 	// 1. the player walks into the next screen
 	int pcx = gx + fdiv((int)player.x, CELL_W);
@@ -1498,6 +1529,11 @@ void enhanced_begin() {
 	for(int i=1; i<5; i++)
 		fprintf(stderr, "power cell %s at %d,%d\n", DIR_NAME[i], (int)pcell[i].lx, (int)pcell[i].ly);
 	fprintf(stderr, "timers (ticks): ammo %d, burrower %d, healing plant %d\n", ammo_timer, burrow_timer, hplant_timer);
+	if(getenv("FORMIDO_NOGUARD"))		// no guardians (to watch other things in an arm)
+		for(int i=1; i<5; i++) {
+			need_guards[i] = false;
+			sealed[i] = false;
+		}
 	if(getenv("FORMIDO_ONTHORN") && getenv("FORMIDO_WARP")) {		// stand in the arm's first thorn patch
 		int w = atoi(getenv("FORMIDO_WARP"));
 		for(int k=0; k<CELL_W*CELL_H; k++) {
@@ -1516,11 +1552,6 @@ void enhanced_begin() {
 		player.health = atoi(getenv("FORMIDO_HURT"));
 	if(getenv("FORMIDO_BURROW"))		// a burrower soon, in whichever arm the player is in
 		burrow_timer = 60;
-	if(getenv("FORMIDO_NOGUARD"))		// no guardians (to watch other things in an arm)
-		for(int i=1; i<5; i++) {
-			need_guards[i] = false;
-			sealed[i] = false;
-		}
 	if(getenv("FORMIDO_AMMO")) {		// start with special rounds, and have a crate drop soon
 		ammo_type = atoi(getenv("FORMIDO_AMMO")) % NUM_AMMO;
 		ammo_left = 999;
@@ -1539,6 +1570,27 @@ void enhanced_begin() {
 			player.y = pcell[w].ly;
 			player.sx = player.x;
 			player.sy = player.y;
+		}
+	}
+	if(getenv("FORMIDO_STUCK") && getenv("FORMIDO_WARP")) {			// start embedded in the arm's rock
+		int w = atoi(getenv("FORMIDO_WARP"));
+		if(w >= 1 && w <= 4 && (gx != CELL_GX[w] || gy != CELL_GY[w]))
+			switch_cell(CELL_GX[w], CELL_GY[w]);
+		int best = -1;
+		for(int k=0; k<CELL_W*CELL_H && w >= 1 && w <= 4; k++) {
+			int x = k % CELL_W, y = k / CELL_W;
+			if(x > 200 && x < 440 && y > 200 && y < 280 && scr[w].col[k] == 1 &&
+			   scr[w].col[k - 6] == 1 && scr[w].col[k + 6] == 1 && scr[w].col[k - 6 * CELL_W] == 1 && scr[w].col[k + 6 * CELL_W] == 1) {
+				best = k;
+				break;
+			}
+		}
+		if(best >= 0) {
+			player.x = (float)(best % CELL_W);
+			player.y = (float)(best / CELL_W);
+			player.sx = player.x;
+			player.sy = player.y;
+			fprintf(stderr, "embedded at %d,%d\n", (int)player.x, (int)player.y);
 		}
 	}
 #endif

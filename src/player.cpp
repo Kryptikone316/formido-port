@@ -587,6 +587,11 @@ void PLAYER::move() {
 		// Shoot
 		shoot();
 
+#ifdef SF3500
+		// Recoil and shake belong to the original tank controls in the classic game; with the twin-stick preset and
+		// in the enhanced game firing neither pushes the player nor spoils the aim
+		if(!enhanced && config.controls != 1) {
+#endif
 		// Some random shaking
 		dirx += RANDF(-0.2,0.2);
 		diry += RANDF(-0.2,0.2);
@@ -597,6 +602,9 @@ void PLAYER::move() {
 		move_xy(RANDF(-1.2,0), add_angle(angle,-40), &dx,&dy);
 		dirx += dx;
 		diry += dy;
+#ifdef SF3500
+		}
+#endif
 
 		// Start shooting sound
 		if(shoot_chan == -1 && config.sound)
