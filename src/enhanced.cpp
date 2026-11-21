@@ -35,6 +35,7 @@ const CRITTER_STATS ctype_stats[NUM_CTYPES] = {
 	{ 220, 0.33f, 2, 18, 1.8f, 3 },	// striker
 	{ 700, 0.17f, 2, 28, 4.5f, 8 },	// brute
 	{ 240, 0.50f, 2, 17, 1.5f, 4 },	// burrower
+	{ 4500, 0.14f, 3, 40, 12.0f, 100 },	// Hive Tyrant
 };
 
 SDL_Surface *ctype_gfx[NUM_CTYPES][3][35];
@@ -214,8 +215,9 @@ static const int RAMP[NUM_CTYPES][3][3] = {
 	{ {16,13,14}, {92,74,22}, {236,192,44} },			// striker: black with yellow
 	{ {14,18,30}, {62,76,104}, {156,170,196} },			// brute: dark steel blue
 	{ {22,14,10}, {112,86,60}, {232,216,184} },			// burrower: dark earth and bone
+	{ {44,6,28}, {150,28,62}, {255,206,96} },			// Hive Tyrant: dark crimson with gold
 };
-static const float SCALE[NUM_CTYPES] = { 1.0f, 0.70f, 1.12f, 1.70f, 1.20f };
+static const float SCALE[NUM_CTYPES] = { 1.0f, 0.70f, 1.12f, 1.70f, 1.20f, 2.30f };
 
 static SDL_Surface *make_variant(SDL_Surface *src, int type) {
 	float scale = SCALE[type];
@@ -281,6 +283,8 @@ static void make_sprites() {
 		return;
 	sprites_made = true;
 	for(int t=0; t<NUM_CTYPES; t++) {
+		if(t == CT_TYRANT)
+			continue;						// made a few at a time while the Tyrant is on its way
 		for(int f=0; f<3; f++) {
 			for(int a=0; a<35; a++) {
 				SDL_Surface *src = critter_gfx[f][a];
@@ -293,6 +297,9 @@ static void make_sprites() {
 	}
 }
 
+static int hive_level = 0;			// grows by one with every Tyrant slain: all bugs a little tougher and quicker
+static long boon_until = 0;			// the Tyrant's spoils last until this tick
+
 void critter_set_type(CRITTER *c, int type) {
 	if(type < 0 || type >= NUM_CTYPES)
 		type = 0;
@@ -304,11 +311,17 @@ void critter_set_type(CRITTER *c, int type) {
 		if(t > 900) t = 900;
 		mul += 0.4f * t / 900.0f;		// the hive's bugs toughen slowly
 	}
+	// the hive grows stronger with every Tyrant it loses: +3 % health and +1.5 % speed each time
+	int lvl = hive_level > 30 ? 30 : hive_level;
+	if(type == CT_TYRANT)
+		mul = 1.0f + 0.3f * lvl;				// the bosses themselves grow faster
+	else
+		mul *= 1.0f + 0.03f * lvl;
 	// no two bugs are quite the same: health +-15 %, speed +-10 %
-	c->maxhp = (int)(ctype_stats[type].hp * mul * RANDF(0.85f, 1.15f));
+	c->maxhp = (int)(ctype_stats[type].hp * mul * (type == CT_TYRANT ? 1.0f : RANDF(0.85f, 1.15f)));
 	c->health = c->maxhp;
 	c->hs = ctype_stats[type].hs;
-	c->spd = RANDF(0.9f, 1.1f);
+	c->spd = RANDF(0.9f, 1.1f) * (type == CT_TYRANT ? 1.0f : 1.0f + 0.015f * lvl);
 }
 
 
@@ -431,12 +444,19 @@ static int pick_type() {
 	float w[NUM_CTYPES];
 	w[CT_DRONE] = 100.0f;
 	w[CT_BURROWER] = 0;
+	w[CT_TYRANT] = 0;
 	w[CT_RUNNER] = (t < 20) ? 0 : (t - 20) * 0.6f; if(w[CT_RUNNER] > 40) w[CT_RUNNER] = 40;
 	w[CT_STRIKER] = (t < 50) ? 0 : (t - 50) * 0.5f; if(w[CT_STRIKER] > 30) w[CT_STRIKER] = 30;
 	w[CT_BRUTE] = (t < 100) ? 0 : (t - 100) * 0.25f; if(w[CT_BRUTE] > 14) w[CT_BRUTE] = 14;
-	if(count_type(CT_BRUTE) >= 1 + (int)(t / 240))
+	if(count_type(CT_BRUTE) >= 1 + (int)(t / 240) + (enhanced_tyrant_active() ? 3 : 0))
 		w[CT_BRUTE] = 0;
 
+	if(enhanced_tyrant_active()) {			// the heavy bugs screen for the Tyrant; the weak ones will not come near it
+		w[CT_DRONE] *= 0.15f;
+		w[CT_RUNNER] *= 0.15f;
+		w[CT_STRIKER] = (w[CT_STRIKER] < 12 ? 12 : w[CT_STRIKER]) * 2.5f;
+		w[CT_BRUTE] = (w[CT_BRUTE] < 6 ? 6 : w[CT_BRUTE]) * 2.0f;
+	}
 	if(adapt_camp) { w[CT_BRUTE] *= 2.4f; w[CT_STRIKER] *= 1.6f; if(t >= 40 && w[CT_BRUTE] == 0 && count_type(CT_BRUTE) < 1) w[CT_BRUTE] = 6; }
 	if(adapt_kite) { w[CT_RUNNER] *= 2.2f; if(t >= 10 && w[CT_RUNNER] < 10) w[CT_RUNNER] = 10; }
 	if(adapt_bombs) { w[CT_RUNNER] *= 1.8f; w[CT_STRIKER] *= 1.3f; }
@@ -576,7 +596,7 @@ static SDL_Surface *glow_item[9];		// soft light under the pickups: [0-3] ammo, 
 static bool mode_on() { return mode != 0 && enhanced_ticks < mode_until; }
 
 float enhanced_player_speed() {
-	return carrying ? 0.88f : 1.0f;
+	return (carrying ? 0.88f : 1.0f) * (enhanced_ticks < boon_until ? 1.2f : 1.0f);
 }
 
 float enhanced_bug_speed(float x, float y) {
@@ -1187,6 +1207,7 @@ static void blit_center(SDL_Surface *bmp, SDL_Surface *sp, int x, int y);
 static void rect(SDL_Surface *bmp, int x, int y, int w, int h, int r, int g, int b);
 #define NUM_TRAPS	3
 static void traps_draw_under(SDL_Surface *bmp);
+static void tyrant_draw_under(SDL_Surface *bmp);
 
 #define BUNKER_INTEGRITY	800.0f
 #define BUNKER_ABSORB		0.35f			// share of a bite that reaches it (it is built to take them)
@@ -1456,6 +1477,7 @@ static void bunker_update() {
 
 void enhanced_draw_under(SDL_Surface *bmp) {
 	traps_draw_under(bmp);
+	tyrant_draw_under(bmp);
 	if(!bunker_floor)
 		return;
 	if(kit.ok && (kit.life > 240 || (kit.life / 8) % 2 == 0)) {
@@ -1498,8 +1520,13 @@ static int scaled_int(int dmg, float mult) {
 }
 
 int enhanced_damage(CRITTER *c, int dmg) {
+	float m = 1.0f;
 	if(c->bleed > 0)
-		return scaled_int(dmg, BLEED_VULN);
+		m *= BLEED_VULN;
+	if(c->stun > 0)
+		m *= 1.5f;						// the Tyrant, dazed after a charge
+	if(m > 1.0f)
+		return scaled_int(dmg, m);
 	return dmg;
 }
 
@@ -1907,10 +1934,18 @@ static void trap_update(int here) {
 				continue;
 			if(distance(c->x, c->y, tr->x, tr->y) > TRAP_RADIUS[ty] + c->hs * 0.5f)
 				continue;
-			if(ty == TRAP_SPIKES) {			// stuck on the spears: slowed
-				c->dirx *= 0.78f;
-				c->diry *= 0.78f;
+			if(ty == TRAP_SPIKES) {			// stuck on the spears: slowed (a Tyrant hardly notices)
+				float k = (c->type == CT_TYRANT) ? 0.94f : 0.78f;
+				c->dirx *= k;
+				c->diry *= k;
 				c->slow = 12;
+			}
+			if(ty == TRAP_GLUE && c->type == CT_TYRANT) {		// too big to be held: only slowed
+				c->dirx *= 0.6f;
+				c->diry *= 0.6f;
+				c->slow = 12;
+				tr->integrity -= 0.25f;
+				continue;
 			}
 			if(ty == TRAP_GLUE) {			// stuck fast: the middle holds a bug still, the rim slows it hard
 				c->dirx *= 0.1f;
@@ -2012,6 +2047,519 @@ static void traps_draw_under(SDL_Surface *bmp) {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+// The Hive Tyrant. After a long time in the game (8 minutes, then 7 to 8 minutes after each Tyrant is slain) the ground
+// trembles for 15 seconds and a Hive Tyrant emerges: an elite boss with one or two mutations. The weakest bugs (drones,
+// runners) run from it; the heavier ones screen for it. Killing it fully heals the player and gives the Tyrant's spoils
+// for 90 seconds; afterwards things settle, but every bug is a little tougher for good (hive_level).
+
+#define MUT_BROOD	0
+#define MUT_CHARGER	1
+#define MUT_SPITTER	2
+#define MUT_STOMPER	3
+#define NUM_MUTS	4
+static const char *MUT_NAME[NUM_MUTS] = { "brood-mother", "charger", "spitter", "stomper" };
+
+#define TY_WAITING	0
+#define TY_WARNING	1
+#define TY_ACTIVE	2
+
+static int ty_phase = TY_WAITING;
+static long ty_next = 60 * 60 * 8;				// when the next one stirs
+static int ty_warn = 0;
+static int ty_cycle = 0;
+static int ty_muts[2] = { 0, 0 };
+static int ty_nmuts = 1;
+static int ty_sprite_next = 0;
+static bool ty_alive = false;					// known from the boss's own update (no pointers into the bug list)
+static float ty_x = 0, ty_y = 0;
+static int ty_hp = 0, ty_maxhp = 1;
+static int ty_missing = 0;
+// per-mutation clocks
+static int cd_brood = 0, cd_spit = 0, cd_stomp = 0, cd_charge = 0;
+static int stomp_t = 0;
+static int charge_state = 0, charge_t = 0;		// 0 idle, 1 winding up, 2 charging
+static float charge_dx = 0, charge_dy = 0;
+static bool charge_hit = false;
+static int ty_alert = 0;						// a "!" shows over the Tyrant while it winds up
+
+struct ACID {
+	bool ok;
+	float x, y;
+	int warn;				// ticks until it lands (a ring shows where)
+	int life;				// ticks the pool lasts after landing
+};
+#define MAX_ACID	5
+static ACID acid[MAX_ACID];
+static SDL_Surface *acid_spr = NULL;
+
+bool enhanced_tyrant_active() {
+	return ty_alive;
+}
+
+int enhanced_reload() {
+	return enhanced_ticks < boon_until ? 3 : 5;
+}
+
+static bool has_mut(int m) {
+	for(int i=0; i<ty_nmuts; i++)
+		if(ty_muts[i] == m)
+			return true;
+	return false;
+}
+
+// the weak run away, the strong stand in front of it
+int enhanced_bug_mode(CRITTER *c) {
+	if(!ty_alive || c->type == CT_TYRANT || c->guard || c->brood || c->hidden || c->type == CT_BURROWER)
+		return 0;
+	if(c->type == CT_DRONE || c->type == CT_RUNNER)
+		return 1;
+	return 2;
+}
+
+void enhanced_bug_target(CRITTER *c, float *tx, float *ty) {
+	if(enhanced_bug_mode(c) == 1) {					// away from the Tyrant, as far as the ground allows
+		float ax = c->x - ty_x, ay = c->y - ty_y;
+		float l = sqrtf(ax * ax + ay * ay);
+		if(l < 1) { ax = 1; ay = 0; l = 1; }
+		*tx = c->x + ax / l * 300;
+		*ty = c->y + ay / l * 300;
+		return;
+	}
+	// a screen in front of the Tyrant, between it and the player; bugs close to the player just fight
+	float px = player.x - ty_x, py = player.y - ty_y;
+	float l = sqrtf(px * px + py * py);
+	if(l < 1 || distance(c->x, c->y, player.x, player.y) < 150)
+		return;
+	px /= l;
+	py /= l;
+	int h = (int)(((long)c >> 4) % 9);
+	float front = 100.0f + (h % 3) * 26.0f;
+	float side = ((h / 3) - 1) * 44.0f;
+	*tx = ty_x + px * front - py * side;
+	*ty = ty_y + py * front + px * side;
+}
+
+static void make_acid_sprite() {
+	if(acid_spr)
+		return;
+	const int W_ = 92, H_ = 76;
+	acid_spr = SDL_CreateRGBSurface(SDL_SWSURFACE, W_, H_, 16, 0xf800, 0x07e0, 0x001f, 0);
+	Uint32 key = SDL_MapRGB(acid_spr->format, 255, 0, 255);
+	SDL_FillRect(acid_spr, NULL, key);
+	for(int y=0; y<H_; y++) for(int x=0; x<W_; x++) {
+		float dx = x - W_ / 2.0f + 0.5f, dy = (y - H_ / 2.0f + 0.5f) / 0.82f;
+		float d = sqrtf(dx * dx + dy * dy), th = atan2f(dy, dx);
+		float edge = 40.0f * (0.86f + 0.08f * sinf(4 * th + 0.5f) + 0.06f * sinf(7 * th + 1.3f));
+		if(d > edge) continue;
+		float depth = 1.0f - d / edge;
+		float r = 60 + 60 * depth, g = 150 + 90 * depth, b = 30 + 20 * depth;
+		if(d > edge - 3.0f) { r *= 0.55f; g *= 0.6f; b *= 0.5f; }
+		if(((x * 13 + y * 7) % 37) == 0 && d < edge - 8) { r = 210; g = 255; b = 150; }
+		*(Uint16 *)((Uint8 *)acid_spr->pixels + y * acid_spr->pitch + x * 2) = (Uint16)SDL_MapRGB(acid_spr->format,
+			(int)fminf(r, 255), (int)fminf(g, 255), (int)fminf(b, 255));
+	}
+	SDL_SetColorKey(acid_spr, SDL_SRCCOLORKEY, key);
+}
+
+static void tyrant_sprites_step(int n) {
+	while(n-- > 0 && ty_sprite_next < 105) {
+		int f = ty_sprite_next / 35, a = ty_sprite_next % 35;
+		if(!ctype_gfx[CT_TYRANT][f][a] && critter_gfx[f][a] && critter_gfx[f][a]->format->BitsPerPixel == 16)
+			ctype_gfx[CT_TYRANT][f][a] = make_variant(critter_gfx[f][a], CT_TYRANT);
+		ty_sprite_next++;
+	}
+}
+
+static void spawn_brood(CRITTER *boss) {
+	for(int k=0; k<3; k++) {
+		float x = boss->x + RANDF(-50, 50), y = boss->y + RANDF(-50, 50);
+		if(world_blocked((int)x, (int)y, false)) { x = boss->x; y = boss->y; }
+		CRITTER *c = add_critter(x, y, 0);
+		critter_set_type(c, CT_RUNNER);
+		c->brood = true;
+		for(int q=0; q<4; q++)
+			add_particle(x, y, RANDF(-1.5, 1.5), RANDF(-1.5, 1.5), 200, 60, 90, (RAND(8,18)));
+	}
+}
+
+static void launch_acid(float x, float y) {
+	for(int i=0; i<MAX_ACID; i++) {
+		if(!acid[i].ok) {
+			acid[i].ok = true;
+			acid[i].x = x;
+			acid[i].y = y;
+			acid[i].warn = 48;
+			acid[i].life = 60 * 7;
+			return;
+		}
+	}
+}
+
+static void hurt_player(int dmg, float kx, float ky) {
+	if(!player.ok)
+		return;
+	if(enhanced_bunker_absorb(dmg))
+		return;
+	player.health -= dmg;
+	player.dirx += kx;
+	player.diry += ky;
+	if(player.health <= 0)
+		player.die();
+}
+
+bool enhanced_tyrant_update(CRITTER *c) {
+	ty_alive = true;
+	ty_x = c->x;
+	ty_y = c->y;
+	ty_hp = c->health;
+	ty_maxhp = c->maxhp > 0 ? c->maxhp : 1;
+	ty_missing = 0;
+	ty_alert = 0;
+	if(!player.ok)
+		return false;
+	float dist = distance(c->x, c->y, player.x, player.y);
+
+	// dazed after a charge: stands still, takes extra damage (enhanced_damage)
+	if(c->stun > 0) {
+		c->stun--;
+		c->frame = 1;
+		c->dirx = c->diry = 0;
+		return true;
+	}
+
+	// brood-mother: new runners that are not afraid of it
+	if(has_mut(MUT_BROOD) && --cd_brood <= 0) {
+		cd_brood = 60 * (RAND(5, 7));
+		int brood = 0;
+		for(CRITTER *o = critter_first; o; o = o->next)
+			if(o->brood && !o->remove)
+				brood++;
+		if(brood < 9)
+			spawn_brood(c);
+	}
+	// spitter: acid lands where the player stands
+	if(has_mut(MUT_SPITTER) && --cd_spit <= 0 && dist < 560) {
+		cd_spit = 60 * (RAND(3, 5));
+		launch_acid(player.x + RANDF(-12, 12), player.y + RANDF(-12, 12));
+	}
+	// stomper: a slow wind-up, then a shockwave all around
+	if(has_mut(MUT_STOMPER)) {
+		if(stomp_t > 0) {
+			ty_alert = 2;
+			if(--stomp_t == 0) {
+				float r = 150.0f;
+				for(int k=0; k<30; k++) {
+					float a = k * 6.2831853f / 30;
+					add_particle(c->x + cosf(a) * 40, c->y + sinf(a) * 34, cosf(a) * 3.4f, sinf(a) * 3.0f, 170, 130, 80, (RAND(14,26)));
+				}
+				if(config.sound)
+					Mix_PlayChannel(-1, snd_explo[0], 0);
+				if(dist < r) {
+					float kx, ky;
+					move_xy(6.0f, compute_angle(player.x, player.y, c->x, c->y), &kx, &ky);
+					hurt_player(28, kx, ky);
+				}
+				make_crater_sprite();
+				SDL_Rect rc;
+				rc.x = (int)c->x - crater_spr->w / 2; rc.y = (int)c->y - crater_spr->h / 2; rc.w = crater_spr->w; rc.h = crater_spr->h;
+				SDL_BlitSurface(crater_spr, NULL, cur_bground, &rc);
+			}
+			else if(stomp_t % 6 == 0)
+				add_particle(c->x + RANDF(-30, 30), c->y + RANDF(10, 34), RANDF(-0.4, 0.4), RANDF(-1.0, -0.2), 170, 130, 80, (RAND(10,18)));
+			c->frame = 1;
+			c->dirx = c->diry = 0;
+			return true;
+		}
+		if(--cd_stomp <= 0 && dist < 230) {
+			stomp_t = 54;
+			cd_stomp = 60 * (RAND(6, 9));
+		}
+	}
+	// charger: stands and glares, then rushes along a straight line, then is dazed
+	if(has_mut(MUT_CHARGER)) {
+		if(charge_state == 1) {
+			ty_alert = 1;
+			c->dirx = c->diry = 0;
+			if(--charge_t <= 0) {
+				float ang = compute_angle(player.x, player.y, c->x, c->y);
+				move_xy(1.0f, ang, &charge_dx, &charge_dy);
+				charge_state = 2;
+				charge_t = 40;
+				charge_hit = false;
+			}
+			return true;
+		}
+		if(charge_state == 2) {
+			float nx = c->x + charge_dx * 7.0f, ny = c->y + charge_dy * 7.0f;
+			if(world_blocked((int)nx, (int)ny, false) || --charge_t <= 0) {
+				bool crashed = world_blocked((int)nx, (int)ny, false);
+				charge_state = 0;
+				cd_charge = 60 * (RAND(8, 12));
+				if(crashed) {
+					c->stun = 120;					// slammed into the rock: dazed
+					for(int k=0; k<18; k++)
+						add_particle(c->x, c->y, RANDF(-3, 3), RANDF(-3, 3), 190, 150, 90, (RAND(12,26)));
+				}
+				return true;
+			}
+			c->x = nx;
+			c->y = ny;
+			c->sx = nx;
+			c->sy = ny;
+			if(RAND(0,2) == 0)
+				add_particle(c->x, c->y + 12, RANDF(-0.8, 0.8), RANDF(-0.8, 0.2), 170, 130, 80, (RAND(10,20)));
+			if(!charge_hit && distance(c->x, c->y, player.x, player.y) < c->hs + 22) {
+				charge_hit = true;
+				hurt_player(30, charge_dx * 8.0f, charge_dy * 8.0f);
+			}
+			c->frame += 0.4f;
+			if((int)c->frame > 3) c->frame = 0;
+			return true;
+		}
+		if(--cd_charge <= 0 && dist > 170 && dist < 540) {
+			charge_state = 1;
+			charge_t = 54;
+		}
+	}
+	return false;
+}
+
+static void acid_update() {
+	for(int i=0; i<MAX_ACID; i++) {
+		if(!acid[i].ok)
+			continue;
+		if(acid[i].warn > 0) {
+			if(--acid[i].warn == 0)
+				for(int k=0; k<10; k++)
+					add_particle(acid[i].x, acid[i].y, RANDF(-2, 2), RANDF(-2, 1), 120, 230, 60, (RAND(8,16)));
+			continue;
+		}
+		if(--acid[i].life <= 0) {
+			acid[i].ok = false;
+			continue;
+		}
+		if(player.ok && !enhanced_in_bunker() && distance(player.x, player.y, acid[i].x, acid[i].y) < 38 && enhanced_ticks % 5 == 0) {
+			player.health -= 2;
+			if(RAND(0,2) == 0)
+				add_particle(player.x + RANDF(-8, 8), player.y + RANDF(-6, 6), RANDF(-0.5, 0.5), RANDF(-1.0, -0.2), 120, 230, 60, (RAND(8,14)));
+			if(player.health <= 0)
+				player.die();
+		}
+	}
+}
+
+static void tyrant_spawn() {
+	// somewhere well away from the player on open ground: usually in the next screen over, so that it walks in
+	float bx = 0, by = 0, best = -1;
+	for(int tries=0; tries<200; tries++) {
+		int ci = (RAND(0, 4));
+		int lx = (RAND(90, CELL_W - 90)), ly = (RAND(90, CELL_H - 90));
+		float x = (float)(lx + (CELL_GX[ci] - gx) * CELL_W), y = (float)(ly + (CELL_GY[ci] - gy) * CELL_H);
+		float d = distance(x, y, player.x, player.y);
+		if(d < 250)
+			continue;
+		bool ok = true;
+		for(int dy2=-1; dy2<=1 && ok; dy2++) for(int dx2=-1; dx2<=1 && ok; dx2++)
+			if(world_blocked((int)x + dx2 * 34, (int)y + dy2 * 28, false))
+				ok = false;
+		if(!ok)
+			continue;
+		if(d > best) {
+			best = d;
+			bx = x;
+			by = y;
+		}
+		if(d >= 380)
+			break;
+	}
+	if(best < 0) {
+		bx = player.x + 300;
+		by = player.y;
+		enhanced_unstick(&bx, &by);
+	}
+	CRITTER *c = add_critter(bx, by, 0);
+	critter_set_type(c, CT_TYRANT);
+#ifdef FORMIDO_TESTHOOKS
+	if(getenv("FORMIDO_TYRANTHP")) {
+		c->maxhp = atoi(getenv("FORMIDO_TYRANTHP"));
+		c->health = c->maxhp;
+	}
+#endif
+	ty_alive = true;
+	ty_x = bx;
+	ty_y = by;
+	ty_hp = c->health;
+	ty_maxhp = c->maxhp;
+	ty_phase = TY_ACTIVE;
+	cd_brood = 60 * 3;
+	cd_spit = 60 * 4;
+	cd_stomp = 60 * 5;
+	cd_charge = 60 * 4;
+	stomp_t = 0;
+	charge_state = 0;
+	for(int k=0; k<40; k++)
+		add_particle(bx + RANDF(-30, 30), by + RANDF(-20, 30), RANDF(-3, 3), RANDF(-3, 1), 150, 100, 60, (RAND(18,40)));
+	char buf[80];
+	if(ty_nmuts == 1)
+		snprintf(buf, sizeof(buf), "a hive tyrant emerges: the %s", MUT_NAME[ty_muts[0]]);
+	else
+		snprintf(buf, sizeof(buf), "hive tyrant: %s and %s", MUT_NAME[ty_muts[0]], MUT_NAME[ty_muts[1]]);
+	set_message(buf);
+	msg_timer = 60 * 7;
+}
+
+void enhanced_tyrant_slain(float x, float y) {
+	ty_alive = false;
+	ty_phase = TY_WAITING;
+	ty_cycle++;
+	hive_level++;
+	ty_next = enhanced_ticks + 60 * 60 * 7 + 60 * (long)(RAND(0, 60));
+	boon_until = enhanced_ticks + 60 * 90;
+	charge_state = 0;
+	stomp_t = 0;
+	for(int i=0; i<MAX_ACID; i++)
+		acid[i].ok = false;
+	// the fall of the Tyrant
+	for(int k=0; k<3; k++)
+		create_explosion((int)(x + RANDF(-40, 40)), (int)(y + RANDF(-30, 30)), (RAND(0,1)), RANDF(0.3f, 0.5f));
+	for(int k=0; k<50; k++)
+		add_particle(x, y, RANDF(-4, 4), RANDF(-4, 4), RAND(200,255), RAND(150,220), RAND(40,110), (RAND(18,40)));
+	if(config.sound)
+		Mix_PlayChannel(-1, snd_explo[1], 0);
+	// the spoils: fully healed, hits count more, faster fire, a little quicker, a steady mend, for 90 seconds
+	if(player.ok)
+		player.health = 200;
+	prev_health = player.health;
+	set_message("the tyrant falls: take the hive's spoils");
+	msg_timer = 60 * 7;
+}
+
+static void tyrant_update() {
+	// the boon's regeneration
+	if(enhanced_ticks < boon_until && player.ok && enhanced_ticks % 30 == 0 && player.health < 200) {
+		player.health++;
+		prev_health = player.health;
+	}
+	if(enhanced_ticks < boon_until && player.ok && RAND(0,24) == 0)
+		add_particle(player.x + RANDF(-14, 14), player.y + RANDF(-6, 10), RANDF(-0.2, 0.2), RANDF(-0.9, -0.3), 255, 215, 80, (RAND(18,34)));
+	acid_update();
+
+	if(ty_phase == TY_WAITING) {
+		if(enhanced_ticks >= ty_next && player.ok) {
+			ty_phase = TY_WARNING;
+			ty_warn = 60 * 15;
+			ty_sprite_next = 0;
+			ty_nmuts = ty_cycle >= 1 ? 2 : 1;			// the first one has a single power, later ones two
+			ty_muts[0] = (RAND(0, NUM_MUTS - 1));
+			do { ty_muts[1] = (RAND(0, NUM_MUTS - 1)); } while(ty_muts[1] == ty_muts[0]);
+#ifdef FORMIDO_TESTHOOKS
+			if(getenv("FORMIDO_MUT"))
+				ty_muts[0] = atoi(getenv("FORMIDO_MUT")) % NUM_MUTS;
+			if(getenv("FORMIDO_MUT2")) {
+				ty_nmuts = 2;
+				ty_muts[1] = atoi(getenv("FORMIDO_MUT2")) % NUM_MUTS;
+			}
+			if(getenv("FORMIDO_TYRANT"))
+				ty_warn = 60 * 4;
+#endif
+			set_message("the ground trembles: something vast is stirring");
+			msg_timer = 60 * 6;
+		}
+	}
+	else if(ty_phase == TY_WARNING) {
+		tyrant_sprites_step(4);
+		make_acid_sprite();
+		if(ty_warn == 60 * 5) {
+			set_message("the hive tyrant is almost here");
+			msg_timer = 60 * 4;
+		}
+		if(--ty_warn <= 0) {
+			tyrant_sprites_step(105);
+			tyrant_spawn();
+		}
+	}
+	else {
+#ifdef FORMIDO_TESTHOOKS
+		static int active_ticks = 0;
+		if(getenv("FORMIDO_KILLTYRANT") && ++active_ticks > 300) {		// test: slay it after 5 seconds
+			active_ticks = -1000000;
+			for(CRITTER *c = critter_first; c; c = c->next)
+				if(c->type == CT_TYRANT && !c->remove) {
+					c->health = 0;
+					c->die(0);
+					break;
+				}
+		}
+#endif
+		// safety: if the Tyrant vanished without being slain (it should not), start the wait again
+		if(!ty_alive || ++ty_missing > 600) {
+			if(ty_missing > 600 || !ty_alive) {
+				ty_alive = false;
+				ty_phase = TY_WAITING;
+				ty_next = enhanced_ticks + 60 * 60 * 3;
+				ty_missing = 0;
+			}
+		}
+		else if(false)
+			ty_missing = 0;
+	}
+}
+
+static void tyrant_draw_under(SDL_Surface *bmp) {
+	if(!acid_spr)
+		return;
+	for(int i=0; i<MAX_ACID; i++) {
+		if(!acid[i].ok)
+			continue;
+		if(acid[i].warn > 0) {			// where it will land: a red ring that closes in
+			float r = 8.0f + acid[i].warn * 0.7f;
+			for(int k=0; k<28; k++) {
+				float a = k * 6.2831853f / 28;
+				rect(bmp, (int)(acid[i].x + cosf(a) * r), (int)(acid[i].y + sinf(a) * r * 0.82f), 2, 2, 255, 60, 40);
+			}
+		}
+		else
+			blit_center(bmp, acid_spr, (int)acid[i].x, (int)acid[i].y);
+	}
+}
+
+static void tyrant_draw_over(SDL_Surface *bmp) {
+	// the boon, while it lasts
+	if(enhanced_ticks < boon_until) {
+		int secs = (int)((boon_until - enhanced_ticks) / 60);
+		char line[64];
+		snprintf(line, sizeof(line), "tyrant's spoils  %d:%02d", secs / 60, secs % 60);
+		rect(bmp, 8, SCREEN_H - 138, 7, 7, 255, 215, 80);
+		font_write(bmp, FONT_NORMAL, 20, SCREEN_H - 143, line);
+	}
+
+	if(!ty_alive)
+		return;
+	// the boss bar across the top
+	int w = 300, x0 = (SCREEN_W - w) / 2, y0 = 30;
+	float f = ty_hp > 0 ? (float)ty_hp / ty_maxhp : 0.0f;
+	rect(bmp, x0 - 2, y0 - 2, w + 4, 12, 18, 10, 12);
+	rect(bmp, x0, y0, w, 8, 70, 20, 30);
+	rect(bmp, x0, y0, (int)(w * f), 8, f > 0.5f ? 210 : 235, f > 0.5f ? 50 : 120, f > 0.5f ? 60 : 40);
+	char name[80];
+	if(ty_nmuts == 1)
+		snprintf(name, sizeof(name), "hive tyrant: %s", MUT_NAME[ty_muts[0]]);
+	else
+		snprintf(name, sizeof(name), "hive tyrant: %s, %s", MUT_NAME[ty_muts[0]], MUT_NAME[ty_muts[1]]);
+	font_write(bmp, FONT_NORMAL, (SCREEN_W - font_length(FONT_NORMAL, name)) / 2, y0 + 14, name);
+	// what it is about to do
+	if(ty_alert == 1)
+		font_write(bmp, FONT_BOLD, (int)ty_x - 10, (int)ty_y - 90, (char *)"!");
+	if(ty_alert == 2) {
+		float r = 150.0f * (1.0f - stomp_t / 54.0f);
+		for(int k=0; k<32; k++) {
+			float a = k * 6.2831853f / 32;
+			rect(bmp, (int)(ty_x + cosf(a) * r), (int)(ty_y + sinf(a) * r * 0.85f), 2, 2, 255, 150, 60);
+		}
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////////
 // Special ammunition, found in the arms: about double damage against one rank, a little less against the rest
 
 struct AMMO_BOX {
@@ -2026,9 +2574,10 @@ static int ammo_timer = 0;
 static SDL_Surface *ammo_spr[NUM_AMMO];
 
 float enhanced_ammo_mult(int rank) {
+	float boon = enhanced_ticks < boon_until ? 1.6f : 1.0f;			// the Tyrant's spoils: all hits count more
 	if(ammo_type < 0 || ammo_left <= 0)
-		return 1.0f;
-	return (rank == ammo_type) ? AMMO_BONUS[ammo_type] : 0.9f;
+		return boon;
+	return boon * ((rank == ammo_type) ? AMMO_BONUS[ammo_type] : 0.9f);
 }
 
 void enhanced_ammo_fired() {
@@ -2165,6 +2714,8 @@ void enhanced_shift(float dx, float dy) {
 	kit.x += dx; kit.y += dy;
 	bunker.x += dx; bunker.y += dy;
 	trap_shift(dx, dy);
+	for(int i=0; i<MAX_ACID; i++) { acid[i].x += dx; acid[i].y += dy; }
+	ty_x += dx; ty_y += dy;
 	shift_critters(dx, dy);
 	shift_gibs(dx, dy);
 	shift_bombs(dx, dy);
@@ -2229,6 +2780,11 @@ void enhanced_update() {
 		fprintf(stderr, "tick %ld hp %d at %d,%d blocked %d thorn %d cell %d,%d\n", enhanced_ticks, player.health, (int)player.x, (int)player.y, (int)world_blocked((int)player.x, (int)player.y, false), (int)world_thorns((int)player.x, (int)player.y), gx, gy);
 #endif
 
+#ifdef FORMIDO_TESTHOOKS
+	if(getenv("FORMIDO_GOD") && player.ok && player.health < 150)		// test: no dying while watching other things
+		player.health = 150;
+#endif
+
 	// 0. never stay inside rock: a shove from the swarm, a blast or a burst can leave the player where no
 	// direction is free
 	if(player.ok && enhanced_unstick(&player.x, &player.y)) {
@@ -2286,6 +2842,7 @@ void enhanced_update() {
 	heal_plant_update(cell_index(gx, gy));
 	bunker_update();
 	trap_update(cell_index(gx, gy));
+	tyrant_update();
 	player_status_tick();
 	if(player.ok && player.health <= 0)
 		player.die();
@@ -2376,6 +2933,17 @@ void enhanced_begin() {
 	for(int i=0; i<MAX_TBOXES; i++)
 		tbox[i].ok = false;
 	player_burn = player_bleed = player_slow = 0;
+	ty_phase = TY_WAITING;
+	ty_next = 60 * 60 * 8;
+	ty_cycle = 0;
+	hive_level = 0;
+	boon_until = 0;
+	ty_alive = false;
+	ty_missing = 0;
+	charge_state = 0;
+	stomp_t = 0;
+	for(int i=0; i<MAX_ACID; i++)
+		acid[i].ok = false;
 	trap_loaded = -1;
 	trap_charges = 0;
 	trap_cool = 0;
@@ -2423,6 +2991,8 @@ void enhanced_begin() {
 		hplant_timer = 1;
 	if(getenv("FORMIDO_HURT"))			// start hurt
 		player.health = atoi(getenv("FORMIDO_HURT"));
+	if(getenv("FORMIDO_TYRANT"))		// the Tyrant stirs soon (4 s of warning)
+		ty_next = enhanced_ticks + 60 * 2;
 	if(getenv("FORMIDO_TRAP")) {		// start with traps: 0 napalm, 1 spikes
 		trap_loaded = atoi(getenv("FORMIDO_TRAP")) % NUM_TRAPS;
 		trap_charges = 6;
@@ -2580,6 +3150,8 @@ static void draw_world_overlays(SDL_Surface *bmp) {
 
 	// badges over the player
 	enhanced_draw_badges(bmp, (int)player.x, (int)player.y - 36, player_burn > 0, player_bleed > 0, player_slow > 0);
+
+	tyrant_draw_over(bmp);
 
 	// the cell the player carries
 	if(carrying)

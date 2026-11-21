@@ -61,6 +61,8 @@ public:
 	int hs;						// Half size of the body for hits
 
 	float spd;					// Walking speed factor (garrisons vary a little)
+	bool brood;					// Spawned by the Hive Tyrant: does not run from it
+	int stun;					// Dazed (the Tyrant after a charge): takes extra damage
 	int slow;					// Ticks the bug still counts as slowed (spikes, glue): for its badge
 	int burn;					// Ticks of burning left (napalm), enhanced game
 	int bleed;					// Ticks of bleeding left (spikes): more hurt by everything else meanwhile

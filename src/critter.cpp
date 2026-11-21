@@ -334,6 +334,9 @@ void CRITTER::move() {
 		if(remove)
 			return;
 	}
+	// the Hive Tyrant has behaviours of its own (mutations)
+	if(enhanced && type == CT_TYRANT && enhanced_tyrant_update(this))
+		return;
 	// a burrower under the sand creeps, rumbles and erupts on its own
 	if(enhanced && type == CT_BURROWER && enhanced_burrower_update(this))
 		return;
@@ -374,6 +377,8 @@ void CRITTER::move() {
 			tx = hx;
 			ty = hy;
 		}
+		else if(enhanced_bug_mode(this))				// terrified of the Hive Tyrant, or screening for it
+			enhanced_bug_target(this, &tx, &ty);
 		angle = compute_angle(tx,ty,x,y);
 		walk_accel = ctype_stats[type].accel * enhanced_bug_speed(x, y) * spd;
 		bite = ctype_stats[type].dmg;
@@ -426,7 +431,7 @@ void CRITTER::move() {
 	// Attack if near player
 	//if(distance(player.x, player.y, x,y) < 27) {
 #ifdef SF3500
-	if(rects_collide(x-hs, y-hs, 2*hs,2*hs, player.x-20, player.y-20, 40,40)) {
+	if(rects_collide(x-hs, y-hs, 2*hs,2*hs, player.x-20, player.y-20, 40,40) && !(enhanced && enhanced_bug_mode(this) == 1)) {
 #else
 	if(rects_collide(x-16, y-16, 32,32, player.x-20, player.y-20, 40,40)) {
 #endif
@@ -505,6 +510,8 @@ void CRITTER::die(float bul_angle) {
 #ifdef SF3500
 	if(enhanced && guard)
 		enhanced_guardian_killed(x, y, type);
+	if(enhanced && type == CT_TYRANT)
+		enhanced_tyrant_slain(x, y);
 	kills += enhanced ? ctype_stats[type].score : 1;
 #else
 	kills++;
@@ -611,6 +618,8 @@ void CRITTER::clear() {
 	burn = 0;
 	bleed = 0;
 	slow = 0;
+	brood = false;
+	stun = 0;
 	hidden = false;
 	bstate = 0;
 	btimer = 0;

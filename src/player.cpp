@@ -472,7 +472,11 @@ void PLAYER::shoot() {
 		}
 	}
 
+#ifdef SF3500
+	reload = enhanced ? enhanced_reload() : 5;
+#else
 	reload = 5;
+#endif
 }
 
 

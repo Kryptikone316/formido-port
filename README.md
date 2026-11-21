@@ -75,6 +75,18 @@ The main menu has **play classic game** (the original, untouched) and **play enh
   colour: classic power-ups and cells are as before, special rounds are cartridges with a coloured tip (red drones,
   pale yellow runners, gold strikers, blue brutes), traps are round discs (flame, spears, drop), the bunker kit is a
   green dome with a white rim, healing plants are green.
+- **The Hive Tyrant.** After a long time in the game (8 minutes at first, then 7 to 8 minutes after each Tyrant is
+  slain) the ground trembles for 15 seconds and a Hive Tyrant walks in from the next screen over: a huge crimson boss
+  (4500 health, 30 % more for each one slain before it) with a boss bar at the top. The weakest bugs (drones, runners)
+  run from it in terror and the hive sends fewer of them; strikers and brutes screen for it, standing between it and you
+  (and more of them come). It has one mutation (two from the second Tyrant on): **brood-mother** (new runners that are not
+  afraid of it), **charger** (a "!" tell, then a rush in a straight line: 30 damage; if it hits rock it is dazed and takes
+  50 % more damage), **spitter** (acid lands where you stand: a red ring closes in, then a pool for 7 seconds, 2 hit
+  points per 5 ticks), **stomper** (a slow wind-up with a ring, then a shockwave 150 pixels around: 28 damage). It is too
+  big to be held by glue and barely feels spikes, but napalm and everything else works. Slay it and you are fully healed
+  and get **the Tyrant's spoils** for 90 seconds (hits count 60 % more, you fire faster, move 20 % quicker and mend
+  1 hit point every half second). Then things settle down again, except that every bug is now 3 % tougher and 1.5 %
+  faster for good, for every Tyrant slain so far, until the next one comes.
 - **Bunker.** A rare kit that only a guardian can drop (15 % per guardian, one in three for the warden; never more than
   one kit or bunker at a time). Walk over the kit to take it, then press **R1** to deploy the bunker a little ahead of
   you and step onto it. Inside you cannot walk, but you can turn, aim and fire out; you mend 3 hit points a second, and

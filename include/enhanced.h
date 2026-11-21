@@ -32,7 +32,8 @@ extern bool enhanced;
 #define CT_STRIKER	2	// tougher, hits harder
 #define CT_BRUTE	3	// huge and slow
 #define CT_BURROWER	4	// hides under the sand of the arms and erupts under the player
-#define NUM_CTYPES	5
+#define CT_TYRANT	5	// the Hive Tyrant: an elite boss that turns up after a long time
+#define NUM_CTYPES	6
 
 struct CRITTER_STATS {
 	int hp;				// health
@@ -90,6 +91,14 @@ void enhanced_guardian_killed(float x, float y, int type);
 bool enhanced_in_bunker();
 bool enhanced_bunker_absorb(int damage);		// true when the player is inside: the damage goes to the bunker
 void enhanced_draw_under(SDL_Surface *bmp);		// the bunker's floor and the kit lying about, drawn under bugs and player
+
+// The Hive Tyrant: the weakest bugs run from it, the rest screen for it; it has mutations; killing it gives a boon
+bool enhanced_tyrant_active();
+int enhanced_bug_mode(CRITTER *c);								// 0 normal, 1 terrified (runs away), 2 meat shield
+void enhanced_bug_target(CRITTER *c, float *tx, float *ty);		// where a terrified bug or a shield bug goes
+bool enhanced_tyrant_update(CRITTER *c);						// the boss's own behaviour; true = it used up this tick
+void enhanced_tyrant_slain(float x, float y);
+int enhanced_reload();											// ticks between shots (shorter with the boon)
 
 // Laser sight: a thin red line from the muzzle along the line of fire (called when the scene is drawn; shows
 // according to the laser_sight setting)
