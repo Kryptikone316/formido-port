@@ -423,7 +423,7 @@ void PLAYER::shoot() {
 #endif
 					// Bullet hit an enemy!
 #ifdef SF3500
-					temp->health -= enhanced ? (int)(25 * enhanced_ammo_mult(temp->type) + 0.5f) : 25;
+					temp->health -= enhanced ? enhanced_damage(temp, (int)(25 * enhanced_ammo_mult(temp->type) + 0.5f)) : 25;
 					if(enhanced)
 						enhanced_ammo_hit(temp->x, temp->y);
 #else

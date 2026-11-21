@@ -779,7 +779,7 @@ static void turret_fire(float px, float py) {
 	if(!best)
 		return;
 	float ang = compute_angle(best->x, best->y, px, py);
-	best->health -= 25;
+	best->health -= enhanced_damage(best, 25);
 	best->blood((RAND(2,5)), ang);
 	if(best->health <= 0)
 		best->die(ang);
@@ -1322,7 +1322,7 @@ static void bunker_blast(float x, float y) {
 				int dam = (int)(BLAST_DAMAGE * f);
 				float ang = compute_angle(c->x, c->y, x, y);
 				if(dam > 0) {
-					c->health -= dam;
+					c->health -= enhanced_damage(c, dam);
 					if(c->health <= 0)
 						c->die(ang);
 				}
@@ -1480,6 +1480,155 @@ static void bunker_draw_over(SDL_Surface *bmp) {
 	}
 	if(kit_carried)
 		blit_center(bmp, kit_spr, (int)player.x + 22, (int)player.y - 34);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Burning (napalm) and bleeding (spikes). Burning: 2 hit points every 10 ticks while it lasts, which is 3 seconds after
+// the bug (or the player) was last in the fire. Bleeding: 1 hit point every 20 ticks for 5 seconds after the last
+// spear, and everything else hurts 25 % more in the meantime.
+
+#define BURN_TICKS		180
+#define BLEED_TICKS		300
+#define BLEED_VULN		1.25f
+
+static int player_burn = 0, player_bleed = 0, player_slow = 0;
+
+static int scaled_int(int dmg, float mult) {
+	return (int)(dmg * mult + RANDF(0, 1));			// whole points on average
+}
+
+int enhanced_damage(CRITTER *c, int dmg) {
+	if(c->bleed > 0)
+		return scaled_int(dmg, BLEED_VULN);
+	return dmg;
+}
+
+int enhanced_player_bite(int bite) {
+	if(player_bleed > 0)
+		return scaled_int(bite, BLEED_VULN);
+	return bite;
+}
+
+void enhanced_status_tick(CRITTER *c) {
+	if(c->hidden || c->remove)
+		return;
+	if(c->slow > 0)
+		c->slow--;
+	if(c->burn > 0) {
+		c->burn--;
+		if(c->burn % 10 == 0) {
+			c->health -= 2;
+			if(c->health <= 0) {
+				c->die(RANDF(0, 359));
+				return;
+			}
+		}
+		if(c->burn % 6 == 0)
+			add_particle(c->x + RANDF(-8, 8), c->y + RANDF(-8, 4), RANDF(-0.3, 0.3), RANDF(-1.5, -0.6), 255, (RAND(90,170)), 20, (RAND(8,14)));
+	}
+	if(c->bleed > 0) {
+		c->bleed--;
+		if(c->bleed % 20 == 0) {
+			c->health -= 1;
+			if(c->health <= 0) {
+				c->die(RANDF(0, 359));
+				return;
+			}
+			add_particle(c->x + RANDF(-8, 8), c->y + RANDF(-4, 8), RANDF(-0.3, 0.3), RANDF(0.1, 0.8), 190, 30, 30, (RAND(8,14)));
+		}
+	}
+}
+
+static void player_status_tick() {
+	if(!player.ok || enhanced_in_bunker()) {
+		player_burn = player_bleed = player_slow = 0;
+		return;
+	}
+	if(player_slow > 0)
+		player_slow--;
+	if(player_burn > 0) {
+		player_burn--;
+		if(player_burn % 10 == 0 && player.health > 2)
+			player.health -= 2;
+		if(player_burn % 6 == 0)
+			add_particle(player.x + RANDF(-8, 8), player.y + RANDF(-8, 4), RANDF(-0.3, 0.3), RANDF(-1.5, -0.6), 255, (RAND(90,170)), 20, (RAND(8,14)));
+	}
+	if(player_bleed > 0) {
+		player_bleed--;
+		if(player_bleed % 20 == 0 && player.health > 2) {
+			player.health -= 1;
+			add_particle(player.x + RANDF(-8, 8), player.y + RANDF(-4, 8), RANDF(-0.3, 0.3), RANDF(0.1, 0.8), 190, 30, 30, (RAND(8,14)));
+		}
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Badges over burning, bleeding and slowed bugs (and the player)
+
+static SDL_Surface *badge_spr[3] = { NULL, NULL, NULL };		// flame, drop, slowed
+
+static bool badge_mask(int kind, int x, int y) {			// 0..9 each way
+	float dx = x - 4.5f, dy = y - 4.5f;
+	if(kind == 0) {			// flame: pointed at the top, round at the bottom
+		float w = 4.2f * (y / 9.0f);
+		return y <= 9 && fabsf(dx) < w && !(y > 6 && fabsf(dx) > 3.2f);
+	}
+	if(kind == 1) {			// drop
+		float cy = y - 6.0f;
+		return (dx * dx + cy * cy < 11.0f) || (y < 6 && fabsf(dx) < (y + 0.5f) * 0.55f);
+	}
+	// slowed: a heavy down arrow
+	if(y < 5 && fabsf(dx) < 1.8f)
+		return true;
+	return y >= 4 && y <= 8 && fabsf(dx) < (8.6f - y) * 1.1f;
+}
+
+static void make_badge_sprites() {
+	if(badge_spr[0])
+		return;
+	static const int COL[3][3] = { {255,150,40}, {220,30,40}, {110,200,255} };
+	for(int k=0; k<3; k++) {
+		const int S = 12;
+		SDL_Surface *sp = SDL_CreateRGBSurface(SDL_SWSURFACE, S, S, 16, 0xf800, 0x07e0, 0x001f, 0);
+		Uint32 key = SDL_MapRGB(sp->format, 255, 0, 255);
+		SDL_FillRect(sp, NULL, key);
+		bool m[S + 2][S + 2];
+		for(int y=0; y<S+2; y++) for(int x=0; x<S+2; x++) m[y][x] = false;
+		for(int y=0; y<10; y++) for(int x=0; x<10; x++)
+			m[y + 1][x + 1] = badge_mask(k, x, y);
+		for(int y=0; y<S; y++) for(int x=0; x<S; x++) {
+			bool on = m[y][x];
+			bool edge = !on && ((x > 0 && m[y][x-1]) || (x < S + 1 && m[y][x+1]) || (y > 0 && m[y-1][x]) || (y < S + 1 && m[y+1][x]));
+			if(on) {
+				float k2 = 0.8f + 0.3f * (1.0f - (float)y / S);
+				if(k == 0 && y > 6) { *(Uint16 *)((Uint8 *)sp->pixels + y * sp->pitch + x * 2) = (Uint16)SDL_MapRGB(sp->format, 255, 235, 120); continue; }	// a bright core
+				*(Uint16 *)((Uint8 *)sp->pixels + y * sp->pitch + x * 2) = (Uint16)SDL_MapRGB(sp->format,
+					(int)fminf(COL[k][0] * k2, 255), (int)fminf(COL[k][1] * k2, 255), (int)fminf(COL[k][2] * k2, 255));
+			}
+			else if(edge)
+				*(Uint16 *)((Uint8 *)sp->pixels + y * sp->pitch + x * 2) = (Uint16)SDL_MapRGB(sp->format, 20, 14, 12);
+		}
+		SDL_SetColorKey(sp, SDL_SRCCOLORKEY, key);
+		badge_spr[k] = sp;
+	}
+}
+
+void enhanced_draw_badges(SDL_Surface *bmp, int cx, int top, bool burning, bool bleeding, bool slowed) {
+	if(!badge_spr[0])
+		return;
+	int n = (burning ? 1 : 0) + (bleeding ? 1 : 0) + (slowed ? 1 : 0);
+	if(n == 0)
+		return;
+	int x = cx - n * 7 + 1;
+	SDL_Rect r;
+	for(int k=0; k<3; k++) {
+		bool on = (k == 0) ? burning : (k == 1) ? bleeding : slowed;
+		if(!on)
+			continue;
+		r.x = x; r.y = top; r.w = 12; r.h = 12;
+		SDL_BlitSurface(badge_spr[k], NULL, bmp, &r);
+		x += 14;
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -1729,15 +1878,10 @@ static void trap_update(int here) {
 			continue;
 		if(--tbox[i].life <= 0) { tbox[i].ok = false; continue; }
 		if(player.ok && distance(player.x, player.y, tbox[i].x, tbox[i].y) < 26) {
+			// one kind of trap at a time: a new crate replaces whatever was left (a crate of the same kind refills it)
 			int type = tbox[i].type;
-			if(trap_loaded == type)
-				trap_charges += TRAP_CHARGES[type];
-			else {
-				trap_loaded = type;
-				trap_charges = TRAP_CHARGES[type];
-			}
-			if(trap_charges > 8)
-				trap_charges = 8;
+			trap_loaded = type;
+			trap_charges = TRAP_CHARGES[type];
 			tbox[i].ok = false;
 			char buf[64];
 			snprintf(buf, sizeof(buf), "%s x%d: R2 lays one, stay off it", TRAP_NAME[type], trap_charges);
@@ -1766,10 +1910,12 @@ static void trap_update(int here) {
 			if(ty == TRAP_SPIKES) {			// stuck on the spears: slowed
 				c->dirx *= 0.78f;
 				c->diry *= 0.78f;
+				c->slow = 12;
 			}
 			if(ty == TRAP_GLUE) {			// stuck fast: the middle holds a bug still, the rim slows it hard
 				c->dirx *= 0.1f;
 				c->diry *= 0.1f;
+				c->slow = 12;
 				if(distance(c->x, c->y, tr->x, tr->y) < TRAP_RADIUS[TRAP_GLUE] * 0.55f)
 					c->dirx = c->diry = 0;
 				tr->integrity -= 0.25f;		// every bug in it wears it down
@@ -1778,7 +1924,11 @@ static void trap_update(int here) {
 			if(!tick)
 				continue;
 			int dam = TRAP_DAMAGE[ty];
-			c->health -= dam;
+			if(ty == TRAP_NAPALM)
+				c->burn = BURN_TICKS;				// keeps burning after it has left the field
+			else
+				c->bleed = BLEED_TICKS;				// the spears leave it bleeding and easier to hurt
+			c->health -= (ty == TRAP_NAPALM) ? enhanced_damage(c, dam) : dam;
 			tr->integrity -= dam * (ty == TRAP_NAPALM ? 0.5f : 1.0f);
 			if(ty == TRAP_NAPALM && RAND(0,2) == 0)
 				add_particle(c->x + RANDF(-8, 8), c->y + RANDF(-8, 6), RANDF(-0.4, 0.4), RANDF(-1.6, -0.6), 255, RAND(90,170), 20, RAND(8,16));
@@ -1792,15 +1942,21 @@ static void trap_update(int here) {
 			if(ty == TRAP_SPIKES) {
 				player.dirx *= 0.78f;
 				player.diry *= 0.78f;
+				player_slow = 12;
 			}
 			if(ty == TRAP_GLUE) {			// the same for the player, a little less sticky in the middle so it can wade out
 				player.dirx *= 0.15f;
 				player.diry *= 0.15f;
+				player_slow = 12;
 				tr->integrity -= 0.25f;
 			}
 			if(tick && TRAP_DAMAGE[ty] > 0) {
 				int dam = TRAP_DAMAGE[ty];
-				player.health -= dam;
+				if(ty == TRAP_NAPALM)
+					player_burn = BURN_TICKS;
+				else
+					player_bleed = BLEED_TICKS;
+				player.health -= (ty == TRAP_NAPALM && player_bleed > 0) ? scaled_int(dam, BLEED_VULN) : dam;
 				tr->integrity -= dam * (ty == TRAP_NAPALM ? 0.5f : 1.0f);
 				if(ty == TRAP_NAPALM)
 					add_particle(player.x + RANDF(-8, 8), player.y + RANDF(-8, 6), RANDF(-0.4, 0.4), RANDF(-1.6, -0.6), 255, RAND(90,170), 20, RAND(8,16));
@@ -2130,6 +2286,9 @@ void enhanced_update() {
 	heal_plant_update(cell_index(gx, gy));
 	bunker_update();
 	trap_update(cell_index(gx, gy));
+	player_status_tick();
+	if(player.ok && player.health <= 0)
+		player.die();
 
 	// 3. the hive watches
 	if(enhanced_ticks % 60 == 0)
@@ -2211,10 +2370,12 @@ void enhanced_begin() {
 	thorn_hit = 0;
 	make_bunker_sprites();
 	make_trap_sprites();
+	make_badge_sprites();
 	for(int i=0; i<MAX_TRAPS; i++)
 		traps[i].ok = false;
 	for(int i=0; i<MAX_TBOXES; i++)
 		tbox[i].ok = false;
+	player_burn = player_bleed = player_slow = 0;
 	trap_loaded = -1;
 	trap_charges = 0;
 	trap_cool = 0;
@@ -2417,6 +2578,9 @@ static void draw_world_overlays(SDL_Surface *bmp) {
 
 	bunker_draw_over(bmp);
 
+	// badges over the player
+	enhanced_draw_badges(bmp, (int)player.x, (int)player.y - 36, player_burn > 0, player_bleed > 0, player_slow > 0);
+
 	// the cell the player carries
 	if(carrying)
 		blit_center(bmp, cell_spr[carrying], (int)player.x, (int)player.y - 40);
@@ -2485,6 +2649,25 @@ void enhanced_draw(SDL_Surface *bmp) {
 			int c = carrying ? carrying : mode;
 			rect(bmp, 8, SCREEN_H - 50, 7, 7, ARM_COL[c][0], ARM_COL[c][1], ARM_COL[c][2]);
 			font_write(bmp, FONT_NORMAL, 20, SCREEN_H - 55, line);
+		}
+	}
+
+	// burning and bleeding, right of the health bar
+	{
+		int x = 118;
+		if(player_burn > 0) {
+			rect(bmp, x, SCREEN_H - 20, 7, 7, 255, 140, 40);
+			font_write(bmp, FONT_NORMAL, x + 10, SCREEN_H - 25, (char *)"burning");
+			x += 86;
+		}
+		if(player_bleed > 0) {
+			rect(bmp, x, SCREEN_H - 20, 7, 7, 200, 30, 30);
+			font_write(bmp, FONT_NORMAL, x + 10, SCREEN_H - 25, (char *)"bleeding");
+			x += 96;
+		}
+		if(player_slow > 0) {
+			rect(bmp, x, SCREEN_H - 20, 7, 7, 110, 200, 255);
+			font_write(bmp, FONT_NORMAL, x + 10, SCREEN_H - 25, (char *)"slowed");
 		}
 	}
 

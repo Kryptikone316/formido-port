@@ -95,6 +95,15 @@ void enhanced_draw_under(SDL_Surface *bmp);		// the bunker's floor and the kit l
 // according to the laser_sight setting)
 void laser_sight_draw(SDL_Surface *bmp);
 
+// Burning and bleeding (traps): per tick for a bug; the damage a bleeding bug takes from other sources; the same for
+// the bites the player takes while bleeding
+void enhanced_status_tick(CRITTER *c);
+int enhanced_damage(CRITTER *c, int dmg);
+int enhanced_player_bite(int bite);
+
+// Small badges over a bug (or the player) that is burning, bleeding or slowed
+void enhanced_draw_badges(SDL_Surface *bmp, int cx, int top, bool burning, bool bleeding, bool slowed);
+
 // Special ammunition (dropped in the arms): damage factor of the player's current rounds against a bug rank,
 // to be called when a round is fired and when it hits
 float enhanced_ammo_mult(int rank);

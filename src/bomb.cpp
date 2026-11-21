@@ -75,6 +75,10 @@ void explode_bomb(BOMB *b) {
 			int dam = (int)(300.0f * d);
 
 			if(dam > 0) {
+#ifdef SF3500
+				if(enhanced)
+					dam = enhanced_damage(temp, dam);
+#endif
 				temp->health -= dam;
 				if(temp->health <= 0)
 					temp->die(compute_angle(temp->x, temp->y, b->x, b->y));

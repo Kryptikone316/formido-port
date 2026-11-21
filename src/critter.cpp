@@ -329,6 +329,11 @@ bool critter_collisions(CRITTER *c) {
 void CRITTER::move() {
 
 #ifdef SF3500
+	if(enhanced) {
+		enhanced_status_tick(this);
+		if(remove)
+			return;
+	}
 	// a burrower under the sand creeps, rumbles and erupts on its own
 	if(enhanced && type == CT_BURROWER && enhanced_burrower_update(this))
 		return;
@@ -441,6 +446,8 @@ void CRITTER::move() {
 		player.shout();
 
 #ifdef SF3500
+		if(enhanced)
+			bite = enhanced_player_bite(bite);
 		if(player.drugs == 0)
 			player.health -= bite;
 		else if(player.drugs && RAND(0,100) >= 50)
@@ -566,6 +573,9 @@ void CRITTER::draw(SDL_Surface *bmp) {
 	rect.h = spr->h;
 	SDL_BlitSurface(spr, NULL, bmp, &rect);
 
+	if(enhanced)
+		enhanced_draw_badges(bmp, (int)x, (int)y - spr->h/2 - 15, burn > 0, bleed > 0, slow > 0);
+
 	// A health bar on the tough ranks once they are hurt
 	if(enhanced && type >= CT_STRIKER && health < maxhp && health > 0) {
 		SDL_Rect bar;
@@ -598,6 +608,9 @@ void CRITTER::clear() {
 	hs = 16;
 	guard = 0;
 	spd = 1.0f;
+	burn = 0;
+	bleed = 0;
+	slow = 0;
 	hidden = false;
 	bstate = 0;
 	btimer = 0;

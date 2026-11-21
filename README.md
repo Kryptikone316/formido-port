@@ -62,10 +62,14 @@ The main menu has **play classic game** (the original, untouched) and **play enh
   normally again. The hive notices what you fire: the longer you use one kind, the fewer of its rank it sends, with a
   message when it adapts.
 - **Traps.** Round trap discs turn up in the arms now and then (about one every 70 to 120 seconds while you are out
-  there, and 10 % of guardians drop one); each gives a few charges of one kind. **R2** leaves a trap behind you:
+  there, and 10 % of guardians drop one); each gives a full load of one kind (3 napalm, 4 spikes, 3 glue). You carry one kind at a time: picking up a new disc
+  throws away whatever was left of the old one, and a disc of the kind you already carry just fills it up again. **R2** leaves a trap behind you:
   **napalm** (a field of fire, 36 hit points a second to whatever stands in it, burns out in about 16 seconds),
   **spikes** (booby-trapped spears, 22 a second and they slow what is on them, last 40 seconds) or **glue** (a puddle
-  that holds bugs almost still in the middle and slows them hard around the edge, 30 seconds). Each trap has an
+  that holds bugs almost still in the middle and slows them hard around the edge, 30 seconds). Napalm leaves what it touches burning for 3 more seconds after it leaves the fire (a light damage over time); spikes
+  leave it bleeding for 5 seconds (a faint damage over time, and everything else hurts it 25 % more meanwhile).
+  A small badge over a bug, or you, shows the effects while they last: a flame (burning), a red drop (bleeding), a blue
+  down arrow (slowed). Each trap has an
   integrity of its own, which the bugs wear down, and it fades with time. **The player is not safe on a trap either**:
   the same burning, spearing and sticking applies to you, so stay off. Pickup icons are different in shape as well as
   colour: classic power-ups and cells are as before, special rounds are cartridges with a coloured tip (red drones,

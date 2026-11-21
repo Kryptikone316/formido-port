@@ -61,6 +61,9 @@ public:
 	int hs;						// Half size of the body for hits
 
 	float spd;					// Walking speed factor (garrisons vary a little)
+	int slow;					// Ticks the bug still counts as slowed (spikes, glue): for its badge
+	int burn;					// Ticks of burning left (napalm), enhanced game
+	int bleed;					// Ticks of bleeding left (spikes): more hurt by everything else meanwhile
 	bool hidden;				// Under the sand: not drawn, cannot be hit (burrowers)
 	int bstate;					// Burrower: 0 hiding, 1 rumbling, 2 up
 	int btimer;
