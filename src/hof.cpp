@@ -61,7 +61,8 @@ void HISCORE_LIST::input_name(int place) {
 			// Handle events
 			SDL_Event event;
 			while(SDL_PollEvent(&event)) {
-				done = handle_event(event);		// from 'game.h'
+				if(handle_event(event))		// from 'game.h'
+					done = true;
 			}
 
 			// Blink

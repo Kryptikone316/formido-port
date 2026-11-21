@@ -59,8 +59,9 @@ extern Mix_Chunk *snd_menu[3];
 	#define MENU_OPT_LASER		6
 	#define MENU_OPT_FPS		7
 	#define MENU_OPT_CREDITS	8
-	#define MENU_MUS_VOLUME		9
-	#define MENU_ACCEPT			10
+	#define MENU_OPT_RESET		9
+	#define MENU_MUS_VOLUME		10
+	#define MENU_ACCEPT			11
 	#define MENU_KEY_FORWARD	MENU_OPT_CONTROLS	// first row, for the up/down wrap-around
 #else
 	#define MENU_KEY_FORWARD	4
@@ -74,7 +75,7 @@ extern Mix_Chunk *snd_menu[3];
 #endif
 
 #define MENU_ID_HALL_OF_FAME	2
-	#define MENU_HOF_NULL		12
+	#define MENU_HOF_NULL		13
 
 void load_menus();
 void unload_menus();

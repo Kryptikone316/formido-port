@@ -34,10 +34,20 @@
 SDL_Surface *fnt_char[FONTS][128];
 
 // Font sizes
+#ifdef SF3500
+int font_size[] = { 32, 16, 16, 32 };		// the two small fonts are made larger below (19 pixels)
+SDL_Surface *fnt_orig[2][128];				// the small fonts at their original size (the big menu font is made from them)
+static SDL_Surface *scale_glyph(SDL_Surface *src, float scale);
+#else
 const int font_size[] = { 32, 16, 16, 32 };
+#endif
 
 // Font spacing for each font
+#ifdef SF3500
+int font_spacing[] = { 20, 10, 10, 20 };
+#else
 const int font_spacing[] = { 20, 10, 10, 20 };
+#endif
 
 
 // Write a string using a specifig font
@@ -118,7 +128,23 @@ void load_fonts() {
 		}
 
 		SDL_FreeSurface(tmp);
+
+#ifdef SF3500
+		// "A bit larger": the two small handwriting fonts at 1.2 times the size (the advance follows: 12)
+		if(i == 1 || i == 2) {
+			for(int f=0; f<128; f++) {
+				fnt_orig[i-1][f] = fnt_char[i][f];
+				SDL_Surface *big = scale_glyph(fnt_orig[i-1][f], 1.2f);
+				if(big)
+					fnt_char[i][f] = big;
+			}
+		}
+#endif
 	}
+#ifdef SF3500
+	font_size[1] = font_size[2] = 19;
+	font_spacing[1] = font_spacing[2] = 12;
+#endif
 
 }
 
@@ -138,8 +164,8 @@ void unload_fonts() {
 #define BIG_SPACING	13
 SDL_Surface *fnt_big[2][128];
 
-static SDL_Surface *scale_glyph(SDL_Surface *src) {
-	int nw = (int)(src->w * BIG_SCALE + 0.5f), nh = (int)(src->h * BIG_SCALE + 0.5f);
+static SDL_Surface *scale_glyph(SDL_Surface *src, float scale) {
+	int nw = (int)(src->w * scale + 0.5f), nh = (int)(src->h * scale + 0.5f);
 	SDL_Surface *dst = SDL_CreateRGBSurface(SDL_SWSURFACE, nw, nh, src->format->BitsPerPixel,
 		src->format->Rmask, src->format->Gmask, src->format->Bmask, 0);
 	if(!dst || src->format->BitsPerPixel != 16)
@@ -150,11 +176,11 @@ static SDL_Surface *scale_glyph(SDL_Surface *src) {
 	if(SDL_MUSTLOCK(src))
 		SDL_LockSurface(src);
 	for(int y=0; y<nh; y++) {
-		float fy = (y + 0.5f) / BIG_SCALE - 0.5f;
+		float fy = (y + 0.5f) / scale - 0.5f;
 		int y0 = (int)floorf(fy);
 		float wy = fy - y0;
 		for(int x=0; x<nw; x++) {
-			float fx = (x + 0.5f) / BIG_SCALE - 0.5f;
+			float fx = (x + 0.5f) / scale - 0.5f;
 			int x0 = (int)floorf(fx);
 			float wx = fx - x0;
 			float ar = 0, ag = 0, ab = 0, aa = 0;
@@ -188,8 +214,8 @@ void load_big_font() {
 		return;
 	done = true;
 	for(int c=0; c<128; c++) {
-		fnt_big[0][c] = scale_glyph(fnt_char[FONT_NORMAL][c]);
-		fnt_big[1][c] = scale_glyph(fnt_char[FONT_NORMAL2][c]);
+		fnt_big[0][c] = scale_glyph(fnt_orig[0][c], BIG_SCALE);
+		fnt_big[1][c] = scale_glyph(fnt_orig[1][c], BIG_SCALE);
 	}
 }
 

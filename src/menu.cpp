@@ -186,6 +186,8 @@ int show_menu(int menu_id) {
 	HISCORE_LIST list_e;
 	list_e.load(HISCORE("hiscore_enh.dat"));
 	int hof_page = 0;		// 0 classic, 1 enhanced
+	int reset_armed = 0;	// the reset row has been pressed once
+	int reset_done = 0;		// ticks left to show "scores erased"
 #endif
 
 	int action = 0;
@@ -344,6 +346,23 @@ int show_menu(int menu_id) {
 					case MENU_OPT_CREDITS:
 						config.credits = !config.credits;
 						break;
+					case MENU_OPT_RESET:
+						if(!reset_armed)
+							reset_armed = 1;				// asks for a second press
+						else {
+							char path[512];
+							list.clear();
+							list_e.clear();
+							strncpy(path, HISCORE("hiscore.dat"), sizeof(path) - 1);
+							path[sizeof(path) - 1] = '\0';
+							list.save(path);
+							strncpy(path, HISCORE("hiscore_enh.dat"), sizeof(path) - 1);
+							path[sizeof(path) - 1] = '\0';
+							list_e.save(path);
+							reset_armed = 0;
+							reset_done = 120;
+						}
+						break;
 #else
 					case MENU_KEY_FORWARD:
 						key_to_set = &(config.key_up);
@@ -452,6 +471,13 @@ int show_menu(int menu_id) {
 		// Draw the menu
 		SDL_BlitSurface(menu_bg[menu_id], NULL, screen, NULL);
 
+#ifdef SF3500
+		if(menu_item != MENU_OPT_RESET)
+			reset_armed = 0;
+		if(reset_done > 0)
+			reset_done--;
+#endif
+
 		// Determine the arrow position
 		int ax,ay;
 		if(menu_id == MENU_ID_MAIN) {
@@ -461,7 +487,7 @@ int show_menu(int menu_id) {
 		else if(menu_id == MENU_ID_SETTINGS) {
 			ax = 288;
 #ifdef SF3500
-			static const int row_y[6] = { 180, 222, 264, 306, 372, 430 };	// controls, laser, frame limit, credits, volume, accept
+			static const int row_y[7] = { 170, 212, 254, 296, 338, 392, 432 };	// controls, laser, frame limit, credits, reset, volume, accept
 			ay = row_y[menu_item - MENU_OPT_CONTROLS] - 4;
 #else
 			ay = 170 + (menu_item - MENU_KEY_FORWARD) * 35;
@@ -497,30 +523,39 @@ int show_menu(int menu_id) {
 		if(menu_id == MENU_ID_SETTINGS) {
 #ifdef SF3500
 			// Rows drawn with the game's own handwriting fonts on the cleaned panel
-			static const int row_y[6] = { 180, 222, 264, 306, 372, 430 };
-			font_write(screen, FONT_NORMAL2, 322, 150, "game settings");
+			static const int row_y[7] = { 170, 212, 254, 296, 338, 392, 432 };
+			// the values are right-aligned to the panel's edge (the fonts are larger now)
+			#define VALX(str) (598 - font_length(FONT_NORMAL, (char *)(str)))
+			font_write(screen, FONT_NORMAL2, 322, 146, "game settings");
 
+			char *ctl = (char *)(config.controls ? "twin stick" : "classic");
 			font_write(screen, (menu_item == MENU_OPT_CONTROLS) ? FONT_NORMAL2 : FONT_NORMAL, 322, row_y[0], "controls");
-			font_write(screen, (menu_item == MENU_OPT_CONTROLS) ? FONT_NORMAL2 : FONT_NORMAL, 490, row_y[0], (char *)(config.controls ? "twin stick" : "classic"));
-			font_write(screen, FONT_NORMAL, 322, row_y[0]+19, (char *)(config.controls ? "L1 + A B X Y aim and fire" : "left/right turn, A fires"));
+			font_write(screen, (menu_item == MENU_OPT_CONTROLS) ? FONT_NORMAL2 : FONT_NORMAL, VALX(ctl), row_y[0], ctl);
+			font_write(screen, FONT_NORMAL, 322, row_y[0]+20, (char *)(config.controls ? "L1 + A B X Y to aim" : "turn L/R, A to fire"));
 
 			static char *laser_words[3] = { (char *)"off", (char *)"enhanced", (char *)"always" };
 			font_write(screen, (menu_item == MENU_OPT_LASER) ? FONT_NORMAL2 : FONT_NORMAL, 322, row_y[1], "laser sight");
-			font_write(screen, (menu_item == MENU_OPT_LASER) ? FONT_NORMAL2 : FONT_NORMAL, 490, row_y[1], laser_words[config.laser]);
-			font_write(screen, FONT_NORMAL, 322, row_y[1]+19, "a red line shows your aim");
+			font_write(screen, (menu_item == MENU_OPT_LASER) ? FONT_NORMAL2 : FONT_NORMAL, VALX(laser_words[config.laser]), row_y[1], laser_words[config.laser]);
+			font_write(screen, FONT_NORMAL, 322, row_y[1]+20, "a red line shows aim");
 
 			char buf[32];
 			sprintf(buf, "%d fps", config.fps_cap);
 			font_write(screen, (menu_item == MENU_OPT_FPS) ? FONT_NORMAL2 : FONT_NORMAL, 322, row_y[2], "frame limit");
-			font_write(screen, (menu_item == MENU_OPT_FPS) ? FONT_NORMAL2 : FONT_NORMAL, 490, row_y[2], buf);
-			font_write(screen, FONT_NORMAL, 322, row_y[2]+19, "20 for slower devices");
+			font_write(screen, (menu_item == MENU_OPT_FPS) ? FONT_NORMAL2 : FONT_NORMAL, VALX(buf), row_y[2], buf);
+			font_write(screen, FONT_NORMAL, 322, row_y[2]+20, "20 for slower devices");
 
+			char *cr = (char *)(config.credits ? "on" : "off");
 			font_write(screen, (menu_item == MENU_OPT_CREDITS) ? FONT_NORMAL2 : FONT_NORMAL, 322, row_y[3], "credits on exit");
-			font_write(screen, (menu_item == MENU_OPT_CREDITS) ? FONT_NORMAL2 : FONT_NORMAL, 490, row_y[3], (char *)(config.credits ? "on" : "off"));
-			font_write(screen, FONT_NORMAL, 322, row_y[3]+19, "select+start leaves now");
+			font_write(screen, (menu_item == MENU_OPT_CREDITS) ? FONT_NORMAL2 : FONT_NORMAL, VALX(cr), row_y[3], cr);
+			font_write(screen, FONT_NORMAL, 322, row_y[3]+20, "select+start leaves now");
 
-			font_write(screen, (menu_item == MENU_MUS_VOLUME) ? FONT_NORMAL2 : FONT_NORMAL, 322, row_y[4]-18, "music volume");
-			font_write(screen, (menu_item == MENU_ACCEPT) ? FONT_NORMAL2 : FONT_NORMAL, 322, row_y[5], "accept settings");
+			{
+				char *rs = (char *)(reset_armed ? "select again: erase" : (reset_done > 0 ? "scores erased" : "both lists"));
+				font_write(screen, (menu_item == MENU_OPT_RESET) ? FONT_NORMAL2 : FONT_NORMAL, 322, row_y[4], "reset hall of fame");
+				font_write(screen, FONT_NORMAL, 322, row_y[4]+20, rs);
+			}
+			font_write(screen, (menu_item == MENU_MUS_VOLUME) ? FONT_NORMAL2 : FONT_NORMAL, 322, row_y[5]-24, "music volume");
+			font_write(screen, (menu_item == MENU_ACCEPT) ? FONT_NORMAL2 : FONT_NORMAL, 322, row_y[6], "accept settings");
 			{
 				// The volume slider
 				float vol = config.music_vol / 128.0;
@@ -528,7 +563,7 @@ int show_menu(int menu_id) {
 				for(int i=0; i<15; i++) {
 					SDL_Rect r;
 					r.x = 322+i*bw;
-					r.y = row_y[4]+4;
+					r.y = row_y[5]+2;
 					r.w = bw;
 					r.h = energy_bar[0]->h;
 					SDL_BlitSurface(((float)i/15.0 >= vol) ? energy_bar[1] : energy_bar[0], NULL, screen, &r);
@@ -567,8 +602,8 @@ int show_menu(int menu_id) {
 #ifdef SF3500
 			(hof_page ? list_e : list).draw(screen, 10, 10, -1);
 			char *t = (char *)(hof_page ? "< enhanced game >" : "< classic game >");
-			font_write(screen, FONT_NORMAL, 360, 192, (char *)"left or right changes the list");
-			font_write(screen, FONT_NORMAL2, 360, 170, t);
+			font_write(screen, FONT_NORMAL, 380, 194, (char *)"left / right: switch");
+			font_write(screen, FONT_NORMAL2, 380, 170, t);
 #else
 			list.draw(screen, 10, 10, -1);
 #endif

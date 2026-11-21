@@ -87,6 +87,14 @@ The main menu has **play classic game** (the original, untouched) and **play enh
   and get **the Tyrant's spoils** for 90 seconds (hits count 60 % more, you fire faster, move 20 % quicker and mend
   1 hit point every half second). Then things settle down again, except that every bug is now 3 % tougher and 1.5 %
   faster for good, for every Tyrant slain so far, until the next one comes.
+- **Legend (L2).** In the enhanced game L2 pauses and shows what every icon means (power cells, special rounds, trap discs,
+  bunker kit, healing plant, classic pickups, red plants, the corner map, the three status badges, napalm, spikes,
+  glue, the Tyrant, the burrower's tremor) plus a light stats strip: time survived, score, Tyrants slain, hive level,
+  cells delivered and kills per rank. Any button resumes.
+- **Clean exit and map edges.** Select + Start always leaves at once (no name entry, no credits). The centre screen has
+  rock blocks in its four corners where the arms' cliffs meet it, so the boundary is visible and nothing invisible catches
+  you; the open way into each arm is the middle of the edge.
+- **Reset Hall of Fame.** In game settings, "reset hall of fame": press select once to be asked, again to erase both lists.
 - **Bunker.** A rare kit that only a guardian can drop (15 % per guardian, one in three for the warden; never more than
   one kit or bunker at a time). Walk over the kit to take it, then press **R1** to deploy the bunker a little ahead of
   you and step onto it. Inside you cannot walk, but you can turn, aim and fire out; you mend 3 hit points a second, and

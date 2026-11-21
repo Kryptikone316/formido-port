@@ -100,6 +100,10 @@ bool enhanced_tyrant_update(CRITTER *c);						// the boss's own behaviour; true 
 void enhanced_tyrant_slain(float x, float y);
 int enhanced_reload();											// ticks between shots (shorter with the boon)
 
+// The legend (L2): pauses the game and shows what the icons mean; any button goes on
+void enhanced_show_legend();
+void enhanced_bug_killed(int type);			// counts kills per rank for the stats strip
+
 // Laser sight: a thin red line from the muzzle along the line of fire (called when the scene is drawn; shows
 // according to the laser_sight setting)
 void laser_sight_draw(SDL_Surface *bmp);

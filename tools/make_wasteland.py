@@ -272,6 +272,7 @@ def make_arm(name, sand, seed):
         band = np.maximum(band, depth + jag - xx)
     if inward != "right":
         band = np.maximum(band, depth + jag - (W - 1 - xx))
+    band = np.minimum(band, 72.0)           # never deeper than the corner blocks of the centre screen
     cliff = band > 0
     solid |= cliff
     solid = clean_collision(solid, inward)

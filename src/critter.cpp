@@ -508,6 +508,8 @@ void CRITTER::die(float bul_angle) {
 	remove = true;
 
 #ifdef SF3500
+	if(enhanced)
+		enhanced_bug_killed(type);
 	if(enhanced && guard)
 		enhanced_guardian_killed(x, y, type);
 	if(enhanced && type == CT_TYRANT)

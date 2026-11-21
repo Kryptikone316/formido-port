@@ -37,6 +37,9 @@ int sf3500_quit_requested(void);
 /* The enhanced game is on (1) or the classic one (0): R1 deploys the bunker instead of firing. */
 void sf3500_set_enhanced(int on);
 
+/* The buttons held right now, one bit per JK_* (joykey.hpp), for screens that wait for "any button". */
+unsigned sf3500_buttons(void);
+
 /* Which control scheme a match uses (1 = twin-stick, 0 = the original tank controls). */
 void sf3500_set_twin_stick(int on);
 

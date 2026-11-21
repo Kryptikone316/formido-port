@@ -504,9 +504,27 @@ void start_game() {
 	while(!main_loop_done) {
 		// Handle events
 		SDL_Event event;
+#ifdef SF3500
+		bool legend_request = false;
+#endif
 		while(SDL_PollEvent(&event)) {
-			main_loop_done = handle_event(event);
+			if(handle_event(event))
+				main_loop_done = true;
+#ifdef SF3500
+			if(event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_F1)
+				legend_request = true;		// L2: a quick tap counts even if the key is up again by the time we look
+#endif
 		}
+
+#ifdef SF3500
+		if(enhanced && legend_request && !main_loop_done) {
+			game_paused = true;
+			enhanced_show_legend();
+			game_paused = false;
+			memset(key, 0, sizeof(key));
+			timer_count = 0;
+		}
+#endif
 
 		// Pause key
 		if(key[SDLK_p]) {
@@ -681,6 +699,11 @@ void start_game() {
 	int place = list.add("", kills);
 	if(place != -1) {
 		// Player is allowed to the Hall of Fame
+#ifdef SF3500
+		if(sf3500_quit_requested())
+			strncpy(list.names[place], "PLAYER", NAME_LEN - 1);		// Select + Start: leave at once, no name to type
+		else
+#endif
 		list.input_name(place);
 		list.save(hs_path);
 	}

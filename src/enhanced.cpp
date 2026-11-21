@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+#include <unistd.h>
 #include "SDL.h"
 #include "SDL_image.h"
 #include "SDL_mixer.h"
@@ -27,6 +28,10 @@
 #include "enhanced.h"
 
 bool enhanced = false;
+
+static int stat_kills[NUM_CTYPES];
+static int stat_cells = 0;
+static int stat_tyrants = 0;
 
 const CRITTER_STATS ctype_stats[NUM_CTYPES] = {
 	//  hp   accel  dmg  hs  mass  score
@@ -123,12 +128,19 @@ static void load_world() {
 	static const char *pic[5] = { NULL, "waste_n.dat", "waste_e.dat", "waste_s.dat", "waste_w.dat" };
 	static const char *colf[5] = { NULL, "waste_n_col.dat", "waste_e_col.dat", "waste_s_col.dat", "waste_w_col.dat" };
 
-	// the centre is the classic screen
-	scr[0].orig = orig_bground;
-	scr[0].cur = cur_bground;
-	scr[0].col = build_col(col_map);
+	// the classic centre screen is kept for the classic game; the enhanced game has its own (the same ground and
+	// pylons, with rock blocks in the four corners where the arms' cliff walls meet it)
 	center_orig = orig_bground;
 	center_cur = cur_bground;
+	scr[0].orig = load_display("ground_enh.dat");
+	scr[0].cur = SDL_DisplayFormat(scr[0].orig);
+	{
+		SDL_Surface *c0 = IMG_Load(DAT((char *)"collisionmap_enh.dat"));
+		if(c0 == NULL)
+			error_msg("Unable to load collisionmap_enh.dat!\n%s", IMG_GetError());
+		scr[0].col = build_col(c0);
+		SDL_FreeSurface(c0);
+	}
 
 	for(int i=1; i<5; i++) {
 		scr[i].orig = load_display(pic[i]);
@@ -903,6 +915,7 @@ static void cells_update(int here) {
 				pcell[carrying].back_tick = enhanced_ticks + (long)(60 * RANDF(100, 160));	// a long wait, a little different each time
 				pcell[carrying].present = false;
 				carrying = 0;
+				stat_cells++;
 				kills += 5;
 				if(config.sound)
 					Mix_PlayChannel(-1, snd_mushroom, 0);
@@ -2413,6 +2426,7 @@ void enhanced_tyrant_slain(float x, float y) {
 	ty_phase = TY_WAITING;
 	ty_cycle++;
 	hive_level++;
+	stat_tyrants++;
 	ty_next = enhanced_ticks + 60 * 60 * 7 + 60 * (long)(RAND(0, 60));
 	boon_until = enhanced_ticks + 60 * 90;
 	charge_state = 0;
@@ -2932,6 +2946,10 @@ void enhanced_begin() {
 		traps[i].ok = false;
 	for(int i=0; i<MAX_TBOXES; i++)
 		tbox[i].ok = false;
+	for(int i=0; i<NUM_CTYPES; i++)
+		stat_kills[i] = 0;
+	stat_cells = 0;
+	stat_tyrants = 0;
 	player_burn = player_bleed = player_slow = 0;
 	ty_phase = TY_WAITING;
 	ty_next = 60 * 60 * 8;
@@ -3229,17 +3247,17 @@ void enhanced_draw(SDL_Surface *bmp) {
 		int x = 118;
 		if(player_burn > 0) {
 			rect(bmp, x, SCREEN_H - 20, 7, 7, 255, 140, 40);
-			font_write(bmp, FONT_NORMAL, x + 10, SCREEN_H - 25, (char *)"burning");
-			x += 86;
+			font_write(bmp, FONT_NORMAL, x + 10, SCREEN_H - 27, (char *)"burning");
+			x += 104;
 		}
 		if(player_bleed > 0) {
 			rect(bmp, x, SCREEN_H - 20, 7, 7, 200, 30, 30);
-			font_write(bmp, FONT_NORMAL, x + 10, SCREEN_H - 25, (char *)"bleeding");
-			x += 96;
+			font_write(bmp, FONT_NORMAL, x + 10, SCREEN_H - 27, (char *)"bleeding");
+			x += 116;
 		}
 		if(player_slow > 0) {
 			rect(bmp, x, SCREEN_H - 20, 7, 7, 110, 200, 255);
-			font_write(bmp, FONT_NORMAL, x + 10, SCREEN_H - 25, (char *)"slowed");
+			font_write(bmp, FONT_NORMAL, x + 10, SCREEN_H - 27, (char *)"slowed");
 		}
 	}
 
@@ -3331,6 +3349,210 @@ void laser_sight_draw(SDL_Surface *bmp) {
 	}
 	if(SDL_MUSTLOCK(bmp))
 		SDL_UnlockSurface(bmp);
+}
+
+
+///////////////////////////////////////////////////////////////////////////////
+// The legend (L2)
+
+void enhanced_bug_killed(int type) {
+	if(type >= 0 && type < NUM_CTYPES)
+		stat_kills[type]++;
+}
+
+// a scaled copy of (a part of) a sprite into box x box around (cx, cy); nearest neighbour, colour key and alpha respected
+static void blit_fit(SDL_Surface *dst, SDL_Surface *src, const SDL_Rect *part, int cx, int cy, int box) {
+	if(!src || dst->format->BitsPerPixel != 16)
+		return;
+	SDL_Rect all;
+	all.x = 0; all.y = 0; all.w = src->w; all.h = src->h;
+	const SDL_Rect *r = part ? part : &all;
+	float scale = (float)box / (float)(r->w > r->h ? r->w : r->h);
+	if(scale > 1.0f)
+		scale = 1.0f;
+	int dw = (int)(r->w * scale + 0.5f), dh = (int)(r->h * scale + 0.5f);
+	int x0 = cx - dw / 2, y0 = cy - dh / 2;
+	int bpp = src->format->BytesPerPixel;
+	if(SDL_MUSTLOCK(src))
+		SDL_LockSurface(src);
+	if(SDL_MUSTLOCK(dst))
+		SDL_LockSurface(dst);
+	for(int y=0; y<dh; y++) {
+		for(int x=0; x<dw; x++) {
+			int sx = r->x + (int)((x + 0.5f) / scale), sy = r->y + (int)((y + 0.5f) / scale);
+			if(sx >= src->w || sy >= src->h)
+				continue;
+			Uint8 *p = (Uint8 *)src->pixels + sy * src->pitch + sx * bpp;
+			Uint32 v = (bpp == 2) ? *(Uint16 *)p : (bpp == 4 ? *(Uint32 *)p : (p[0] | (p[1] << 8) | (p[2] << 16)));
+			if((src->flags & SDL_SRCCOLORKEY) && v == src->format->colorkey)
+				continue;
+			Uint8 rr, gg, bb, aa;
+			SDL_GetRGBA(v, src->format, &rr, &gg, &bb, &aa);
+			if(aa < 20)
+				continue;
+			int px = x0 + x, py = y0 + y;
+			if(px < 0 || py < 0 || px >= dst->w || py >= dst->h)
+				continue;
+			Uint16 *q = (Uint16 *)((Uint8 *)dst->pixels + py * dst->pitch + px * 2);
+			if(aa < 255) {
+				Uint8 orr, ogg, obb;
+				SDL_GetRGB(*q, dst->format, &orr, &ogg, &obb);
+				float a = aa / 255.0f;
+				rr = (Uint8)(orr + (rr - orr) * a); gg = (Uint8)(ogg + (gg - ogg) * a); bb = (Uint8)(obb + (bb - obb) * a);
+			}
+			*q = (Uint16)SDL_MapRGB(dst->format, rr, gg, bb);
+		}
+	}
+	if(SDL_MUSTLOCK(dst))
+		SDL_UnlockSurface(dst);
+	if(SDL_MUSTLOCK(src))
+		SDL_UnlockSurface(src);
+}
+
+static void legend_row(SDL_Surface *bmp, int col, int row, int nicons, SDL_Surface **icons, const SDL_Rect *part, char *title, char *text) {
+	int x = 8 + col * 338, y = 40 + row * 44;
+	int iw = nicons > 1 ? 24 : 34;
+	for(int k=0; k<nicons; k++)
+		blit_fit(bmp, icons[k], (k == 0) ? part : NULL, x + iw / 2 + k * 25, y + 19, 28);
+	int tx = x + (nicons > 1 ? nicons * 25 : 42) + 4;
+	font_write(bmp, FONT_NORMAL2, tx, y + 2, title);
+	font_write(bmp, FONT_NORMAL, tx, y + 22, text);
+}
+
+void enhanced_show_legend() {
+	SDL_Surface *bmp = SDL_GetVideoSurface();
+#ifdef FORMIDO_TESTHOOKS
+	fprintf(stderr, "legend: open (video surface %p, %d bpp)\n", (void *)bmp, bmp ? bmp->format->BitsPerPixel : -1);
+#endif
+	if(!bmp || bmp->format->BitsPerPixel != 16)
+		return;
+	// the paused picture, dimmed
+	if(SDL_MUSTLOCK(bmp))
+		SDL_LockSurface(bmp);
+	for(int y=0; y<bmp->h; y++) {
+		Uint16 *p = (Uint16 *)((Uint8 *)bmp->pixels + y * bmp->pitch);
+		for(int x=0; x<bmp->w; x++)
+			p[x] = (Uint16)((p[x] >> 3) & 0x18E3);
+	}
+	if(SDL_MUSTLOCK(bmp))
+		SDL_UnlockSurface(bmp);
+
+	font_write(bmp, FONT_NORMAL2, (SCREEN_W - font_length(FONT_NORMAL2, (char *)"legend")) / 2, 10, (char *)"legend");
+
+	SDL_Surface *one[4];
+	SDL_Rect plant_part;
+	plant_part.x = 8; plant_part.y = 8; plant_part.w = 64; plant_part.h = 64;
+
+	one[0] = cell_spr[1]; one[1] = cell_spr[3];
+	legend_row(bmp, 0, 0, 2, one, NULL, (char *)"power cells", (char *)"beat guards, take home");
+	one[0] = ammo_spr[0]; one[1] = ammo_spr[3];
+	legend_row(bmp, 0, 1, 2, one, NULL, (char *)"special rounds", (char *)"tip: the rank it hurts");
+	one[0] = tbox_spr[0]; one[1] = tbox_spr[1]; one[2] = tbox_spr[2];
+	legend_row(bmp, 0, 2, 3, one, NULL, (char *)"trap discs", (char *)"R2 lays, stay off");
+	one[0] = kit_spr;
+	legend_row(bmp, 0, 3, 1, one, NULL, (char *)"bunker kit", (char *)"R1 deploys, step in");
+	one[0] = hplant_img;
+	legend_row(bmp, 0, 4, 1, one, hplant_img ? &plant_part : NULL, (char *)"healing plant", (char *)"stand near, it fades");
+	one[0] = gfx_pu_health[0]; one[1] = gfx_pu_bomb[0]; one[2] = gfx_pu_mine[0]; one[3] = gfx_pu_mush[0];
+	legend_row(bmp, 0, 5, 4, one, NULL, (char *)"classic pickups", (char *)"the original four");
+	one[0] = NULL;
+	{
+		// the red plants: a small drawn burst
+		int x = 8 + 17, y = 40 + 6 * 44 + 18;
+		for(int k=0; k<9; k++) {
+			float a = k * 6.2831853f / 9;
+			for(int t=3; t<13; t++)
+				rect(bmp, x + (int)(cosf(a) * t), y + (int)(sinf(a) * t * 0.85f), 2, 2, 230, 50, 40);
+		}
+		font_write(bmp, FONT_NORMAL2, 8 + 46, 40 + 6 * 44 + 2, (char *)"red plants");
+		font_write(bmp, FONT_NORMAL, 8 + 46, 40 + 6 * 44 + 22, (char *)"thorns, light scratch");
+	}
+	{
+		// the corner map
+		int x = 8 + 4, y = 40 + 7 * 44 + 6;
+		rect(bmp, x + 9, y, 8, 6, 120, 120, 100);
+		rect(bmp, x, y + 7, 8, 6, 70, 60, 50); rect(bmp, x + 9, y + 7, 8, 6, 150, 200, 120); rect(bmp, x + 18, y + 7, 8, 6, 70, 60, 50);
+		rect(bmp, x + 9, y + 14, 8, 6, 70, 60, 50);
+		rect(bmp, x + 12, y + 3, 3, 3, 90, 160, 255);
+		font_write(bmp, FONT_NORMAL2, 8 + 46, 40 + 7 * 44 + 2, (char *)"corner map");
+		font_write(bmp, FONT_NORMAL, 8 + 46, 40 + 7 * 44 + 22, (char *)"hollow dot = sealed");
+	}
+
+	one[0] = badge_spr[0];
+	legend_row(bmp, 1, 0, 1, one, NULL, (char *)"burning", (char *)"lingers after fire");
+	one[0] = badge_spr[1];
+	legend_row(bmp, 1, 1, 1, one, NULL, (char *)"bleeding", (char *)"takes 25% more dmg");
+	one[0] = badge_spr[2];
+	legend_row(bmp, 1, 2, 1, one, NULL, (char *)"slowed", (char *)"spikes and glue");
+	one[0] = fire_glow;
+	legend_row(bmp, 1, 3, 1, one, NULL, (char *)"napalm field", (char *)"burns what is inside");
+	one[0] = spike_spr[0];
+	legend_row(bmp, 1, 4, 1, one, NULL, (char *)"spikes", (char *)"bleed and slow");
+	one[0] = glue_spr[0];
+	legend_row(bmp, 1, 5, 1, one, NULL, (char *)"glue", (char *)"holds bugs still");
+	{
+		int x = 346, y = 40 + 6 * 44;
+		rect(bmp, x + 2, y + 12, 30, 12, 150, 28, 62);
+		rect(bmp, x + 2, y + 12, 15, 12, 220, 70, 80);
+		font_write(bmp, FONT_NORMAL2, x + 46, y + 2, (char *)"hive tyrant");
+		font_write(bmp, FONT_NORMAL, x + 46, y + 22, (char *)"boss bar, slay it");
+	}
+	{
+		int x = 346, y = 40 + 7 * 44;
+		for(int k=0; k<3; k++)
+			rect(bmp, x + 4 + k * 10, y + 22 - k * 3, 6, 6, 190, 150, 100);
+		font_write(bmp, FONT_NORMAL2, x + 46, y + 2, (char *)"ground trembles");
+		font_write(bmp, FONT_NORMAL, x + 46, y + 22, (char *)"burrower: move!");
+	}
+	// a light stats strip
+	{
+		rect(bmp, 14, 394, SCREEN_W - 28, 2, 90, 90, 80);
+		int secs = (int)(enhanced_ticks / 60);
+		char l1[100], l2[100];
+		snprintf(l1, sizeof(l1), "time %d:%02d  score %d  tyrants %d  hive %d  cells %d", secs / 60, secs % 60, kills, stat_tyrants, hive_level, stat_cells);
+		snprintf(l2, sizeof(l2), "drones %d runners %d strikers %d brutes %d burrow %d",
+			stat_kills[CT_DRONE], stat_kills[CT_RUNNER], stat_kills[CT_STRIKER], stat_kills[CT_BRUTE], stat_kills[CT_BURROWER]);
+		font_write(bmp, FONT_NORMAL2, 14, 400, l1);
+		font_write(bmp, FONT_NORMAL, 14, 424, l2);
+	}
+	font_write(bmp, FONT_NORMAL, (SCREEN_W - font_length(FONT_NORMAL, (char *)"press any button to go on")) / 2, SCREEN_H - 24, (char *)"press any button to go on");
+
+#ifdef FORMIDO_TESTHOOKS
+	SDL_SaveBMP(bmp, "legend.bmp");		// test builds: what the legend looks like
+#endif
+
+	// wait: first for every button to be let go (L2 itself), then for a new press
+	unsigned prev = 0xFFFFFFFFu;
+	bool released = false;
+	for(int guard=0; guard<60 * 60 * 10; guard++) {
+		SDL_Event ev;
+		while(sf3500_poll(&ev)) {
+			if(ev.type == SDL_QUIT) {
+#ifdef FORMIDO_TESTHOOKS
+				fprintf(stderr, "legend: closed by quit\n");
+#endif
+				return;
+			}
+		}
+		if(sf3500_quit_requested())
+			return;
+		unsigned b = sf3500_buttons();
+#ifdef FORMIDO_TESTHOOKS
+		if(guard % 30 == 0)
+			fprintf(stderr, "legend: frame %d buttons 0x%x released %d\n", guard, b, (int)released);
+#endif
+		if(b == 0)
+			released = true;
+		if(released && (b & ~(prev == 0xFFFFFFFFu ? 0u : prev)) != 0) {
+#ifdef FORMIDO_TESTHOOKS
+			fprintf(stderr, "legend: closed by buttons 0x%x after %d frames\n", b, guard);
+#endif
+			return;
+		}
+		prev = b;
+		SDL_Flip(bmp);			// the glue's flip: present
+		usleep(25000);			// ~40 frames a second is plenty for a still picture
+	}
 }
 
 #endif

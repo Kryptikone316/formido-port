@@ -564,6 +564,7 @@ static const KeyMap g_map[] = {
     { JK_R1,     SDLK_RCTRL,  C_TWIN,   0 },
     { JK_R1,     SDLK_r,      C_ENH,    0 },
     { JK_R2,     SDLK_t,      C_ENH,    0 },
+    { JK_L2,     SDLK_F1,     C_ENH,    0 },
     { JK_START,  SDLK_p,      C_MATCH,  0 },
     { JK_START,  SDLK_RETURN, C_MENU,   0 },
     { JK_SELECT, SDLK_ESCAPE, C_ALWAYS, 0 },
@@ -676,6 +677,11 @@ static void pad_update(void)
     unsigned cur = joykey_read();
 #endif
 
+    /* Select + Start together: leave the game from anywhere. From then on no other button counts: Start would
+     * otherwise also arrive as Return (starting a game from the menu) and Select as Escape. */
+    if ((cur & (1u << JK_SELECT)) && (cur & (1u << JK_START))) g_quit_pending = true;
+    if (g_quit_pending) cur = 0;
+
     for (unsigned i = 0; i < sizeof(g_map) / sizeof(g_map[0]); i++) {
         const KeyMap &m = g_map[i];
         bool active = (cur & (1u << m.jk)) != 0;
@@ -699,18 +705,18 @@ static void pad_update(void)
     }
 
     face_update(cur, g_in_game && g_twin);
-
-    /* Select + Start together: leave the game from anywhere */
-    if ((cur & (1u << JK_SELECT)) && (cur & (1u << JK_START))) g_quit_pending = true;
 }
 
 int sf3500_poll(SDL_Event *e)
 {
     if (g_inited) pad_update();
     audio_update();
+    if (SDL_PollEvent(e))
+        return 1;
     if (g_quit_pending) {
-        /* one SDL_QUIT every 30 ms until the game has actually exited, so each screen the
-         * game passes through (match, name entry, menu) sees it once */
+        /* One SDL_QUIT every 30 ms until the game has actually exited, so each screen the game passes through (match,
+         * name entry, menu) sees it. It is handed out only once the queue is empty: the game loops overwrite their
+         * "done" flag with every event, so a quit followed by a key event would be lost. */
         long long t = now_ms();
         if (t - g_last_quit_ms >= 30) {
             g_last_quit_ms = t;
@@ -719,7 +725,16 @@ int sf3500_poll(SDL_Event *e)
             return 1;
         }
     }
-    return SDL_PollEvent(e);
+    return 0;
+}
+
+unsigned sf3500_buttons(void)
+{
+#ifdef FORMIDO_TESTHOOKS
+    return getenv("FORMIDO_PAD") ? scripted_pad() : joykey_read();
+#else
+    return joykey_read();
+#endif
 }
 
 void sf3500_shutdown(void)
