@@ -32,7 +32,7 @@ const CRITTER_STATS ctype_stats[NUM_CTYPES] = {
 	{ 100, 0.25f, 1, 16, 1.0f, 1 },	// drone (the classic bug)
 	{  40, 0.58f, 1, 11, 0.6f, 1 },	// runner
 	{ 220, 0.33f, 2, 18, 1.8f, 3 },	// striker
-	{ 700, 0.17f, 3, 28, 4.5f, 8 },	// brute
+	{ 700, 0.17f, 2, 28, 4.5f, 8 },	// brute
 };
 
 SDL_Surface *ctype_gfx[NUM_CTYPES][3][35];
@@ -265,7 +265,7 @@ void critter_set_type(CRITTER *c, int type) {
 	if(type > 0) {
 		float t = (float)(enhanced_ticks / 60);
 		if(t > 900) t = 900;
-		mul += 0.6f * t / 900.0f;		// the hive's bugs toughen slowly
+		mul += 0.4f * t / 900.0f;		// the hive's bugs toughen slowly
 	}
 	// no two bugs are quite the same: health +-15 %, speed +-10 %
 	c->maxhp = (int)(ctype_stats[type].hp * mul * RANDF(0.85f, 1.15f));
@@ -393,7 +393,7 @@ static int pick_type() {
 	w[CT_RUNNER] = (t < 20) ? 0 : (t - 20) * 0.6f; if(w[CT_RUNNER] > 40) w[CT_RUNNER] = 40;
 	w[CT_STRIKER] = (t < 50) ? 0 : (t - 50) * 0.5f; if(w[CT_STRIKER] > 30) w[CT_STRIKER] = 30;
 	w[CT_BRUTE] = (t < 100) ? 0 : (t - 100) * 0.25f; if(w[CT_BRUTE] > 14) w[CT_BRUTE] = 14;
-	if(count_type(CT_BRUTE) >= 1 + (int)(t / 150))
+	if(count_type(CT_BRUTE) >= 1 + (int)(t / 240))
 		w[CT_BRUTE] = 0;
 
 	if(adapt_camp) { w[CT_BRUTE] *= 2.4f; w[CT_STRIKER] *= 1.6f; if(t >= 40 && w[CT_BRUTE] == 0 && count_type(CT_BRUTE) < 1) w[CT_BRUTE] = 6; }
@@ -455,6 +455,12 @@ static bool spawn_point(float *ox, float *oy, bool *visible) {
 }
 
 void enhanced_spawn_event() {
+	int roaming = 0;
+	for(CRITTER *c = critter_first; c; c = c->next)
+		if(!c->guard && !c->remove)
+			roaming++;
+	if(roaming >= ENHANCED_MAX_CRITTERS || num_critters >= ENHANCED_MAX_CRITTERS + 60)
+		return;
 	int type = pick_type();
 	int n = 1;
 	if(type == CT_RUNNER)
@@ -508,7 +514,7 @@ static bool alert[5];			// the arm's guardians are awake
 static float garrison[5];		// how strong this time's guardians are: 0.7 (light) .. 1.4 (heavy)
 
 static void roll_garrison(int i) {
-	garrison[i] = RANDF(0.7f, 1.4f);
+	garrison[i] = RANDF(0.75f, 1.35f);
 }
 
 // 1 light, 2 average, 3 heavy: shown on the map next to the arm
@@ -528,7 +534,7 @@ static SDL_Surface *glow_spr[5];	// soft light in the arm's colour
 static bool mode_on() { return mode != 0 && enhanced_ticks < mode_until; }
 
 float enhanced_player_speed() {
-	return carrying ? 0.82f : 1.0f;
+	return carrying ? 0.88f : 1.0f;
 }
 
 float enhanced_bug_speed(float x, float y) {
@@ -677,10 +683,10 @@ static void spawn_cell_guards(int arm) {
 					continue;
 				CRITTER *c = add_critter(x, y, RANDF(0, 359));
 				critter_set_type(c, type);
-				c->maxhp = (int)(c->maxhp * f);						// a heavy garrison is tougher and quicker
+				c->maxhp = (int)(c->maxhp * sqrtf(f));				// a heavy garrison is bigger, a bit tougher and quicker
 				c->spd *= 0.9f + 0.1f * f;
 				if(type == CT_BRUTE && warden) {
-					c->maxhp = c->maxhp * 3 / 2;
+					c->maxhp = c->maxhp * 13 / 10;
 					warden = false;
 				}
 				c->health = c->maxhp;

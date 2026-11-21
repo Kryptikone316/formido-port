@@ -139,9 +139,9 @@ void create_critters() {
 	}
 
 #ifdef SF3500
-	if(enhanced && create_count == 0 && num_critters < ENHANCED_MAX_CRITTERS) {
+	if(enhanced && create_count == 0) {
 		enhanced_spawn_event();
-		create_count = create_delay;
+		create_count = create_delay * 6 / 5;		// the ranks are tougher, so the hive sends them a little less often
 	}
 	else if(!enhanced)
 #endif
