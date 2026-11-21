@@ -350,7 +350,7 @@ static void director_sample() {
 static int count_type(int type) {
 	int n = 0;
 	for(CRITTER *c = critter_first; c; c = c->next)
-		if(c->type == type && !c->remove)
+		if(c->type == type && !c->remove && !c->guard)
 			n++;
 	return n;
 }
@@ -468,6 +468,9 @@ struct POWERCELL {
 	long back_tick;			// when it is there again after being taken
 };
 static POWERCELL pcell[5];
+static bool need_guards[5];		// the arm's guardians have yet to be placed (first visit, or after the cell was delivered)
+static bool sealed[5];			// the cell cannot be taken: guardians alive or not yet placed
+static bool alert[5];			// the arm's guardians are awake
 static int carrying = 0;			// arm of the cell the player carries, 0 for none
 static int mode = 0;				// arm of the cell that set the pylons' mode, 0 for none
 static long mode_until = 0;
@@ -554,46 +557,101 @@ static void make_cell_sprites() {
 	}
 }
 
-// somewhere deep in the arm, away from the open side, not inside rock
+// somewhere deep in the arm, away from the open side, not inside rock, and not where it was last time
+static void place_cell(int i) {
+	static const int LX0[5] = { 0, 100, 400, 100, 90 }, LX1[5] = { 0, 540, 550, 540, 240 };
+	static const int LY0[5] = { 0, 80, 90, 250, 90 }, LY1[5] = { 0, 230, 390, 400, 390 };
+	float old_x = pcell[i].lx, old_y = pcell[i].ly;
+	bool had_old = (old_x != 0 || old_y != 0);
+	bool found = false;
+	for(int tries=0; tries<120 && !found; tries++) {
+		int lx = RAND(LX0[i], LX1[i]), ly = RAND(LY0[i], LY1[i]);
+		if(had_old && tries < 100 && distance((float)lx, (float)ly, old_x, old_y) < 170)
+			continue;
+		int x = lx + (CELL_GX[i] - gx) * CELL_W, y = ly + (CELL_GY[i] - gy) * CELL_H;
+		if(world_blocked(x, y, false) || world_blocked(x + 24, y, false) || world_blocked(x - 24, y, false) ||
+		   world_blocked(x, y + 24, false) || world_blocked(x, y - 24, false))
+			continue;
+		pcell[i].lx = (float)lx;
+		pcell[i].ly = (float)ly;
+		found = true;
+	}
+	if(!found && !had_old) {
+		pcell[i].lx = (float)((LX0[i] + LX1[i]) / 2);
+		pcell[i].ly = (float)((LY0[i] + LY1[i]) / 2);
+	}
+}
+
 static void place_cells() {
-	static const int LX0[5] = { 0, 110, 440, 110, 90 }, LX1[5] = { 0, 530, 550, 530, 200 };
-	static const int LY0[5] = { 0, 90, 100, 290, 100 }, LY1[5] = { 0, 190, 380, 390, 380 };
 	for(int i=1; i<5; i++) {
 		pcell[i].present = true;
 		pcell[i].back_tick = 0;
-		pcell[i].lx = (float)((LX0[i] + LX1[i]) / 2);
-		pcell[i].ly = (float)((LY0[i] + LY1[i]) / 2);
-		for(int tries=0; tries<80; tries++) {
-			int lx = RAND(LX0[i], LX1[i]), ly = RAND(LY0[i], LY1[i]);
-			int x = lx + (CELL_GX[i] - gx) * CELL_W, y = ly + (CELL_GY[i] - gy) * CELL_H;
-			if(world_blocked(x, y, false) || world_blocked(x + 22, y, false) || world_blocked(x - 22, y, false) ||
-			   world_blocked(x, y + 22, false) || world_blocked(x, y - 22, false))
-				continue;
-			pcell[i].lx = (float)lx;
-			pcell[i].ly = (float)ly;
-			break;
+		pcell[i].lx = pcell[i].ly = 0;
+		place_cell(i);
+	}
+}
+
+// What stands watch over each arm's cell: drones, runners, strikers, brutes (the first brute is the warden)
+static const int GUARD_PLAN[5][4] = { {0,0,0,0}, {0,2,2,1}, {5,2,0,1}, {4,0,2,1}, {0,8,2,0} };
+
+static void spawn_cell_guards(int arm) {
+	need_guards[arm] = false;
+	int mins = (int)(enhanced_ticks / 3600);
+	int plan[4];
+	for(int k=0; k<4; k++)
+		plan[k] = GUARD_PLAN[arm][k];
+	plan[CT_STRIKER] += (mins / 2 > 3) ? 3 : mins / 2;		// they grow with the match
+	if(mins >= 8 && plan[CT_BRUTE] > 0)
+		plan[CT_BRUTE]++;
+	float cx = pcell[arm].lx + (CELL_GX[arm] - gx) * CELL_W;
+	float cy = pcell[arm].ly + (CELL_GY[arm] - gy) * CELL_H;
+	bool warden = true;
+	for(int type=CT_BRUTE; type>=0; type--) {
+		for(int k=0; k<plan[type]; k++) {
+			for(int tries=0; tries<60; tries++) {
+				float rad = (type == CT_BRUTE && warden) ? RANDF(45, 80) : RANDF(70, 175);
+				float ang = RANDF(0, 6.2831853f);
+				float x = cx + cosf(ang) * rad, y = cy + sinf(ang) * rad * 0.85f;
+				float lx = x - (CELL_GX[arm] - gx) * CELL_W, ly = y - (CELL_GY[arm] - gy) * CELL_H;
+				if(lx < 50 || lx > CELL_W - 50 || ly < 50 || ly > CELL_H - 50)
+					continue;
+				if(world_blocked((int)x, (int)y, false) || world_blocked((int)x + 14, (int)y, false) || world_blocked((int)x - 14, (int)y, false) ||
+				   world_blocked((int)x, (int)y + 14, false) || world_blocked((int)x, (int)y - 14, false))
+					continue;
+				bool crowded = false;
+				for(CRITTER *o = critter_first; o; o = o->next)
+					if(o->guard == arm && distance(o->x, o->y, x, y) < 26) { crowded = true; break; }
+				if(crowded)
+					continue;
+				CRITTER *c = add_critter(x, y, RANDF(0, 359));
+				critter_set_type(c, type);
+				if(type == CT_BRUTE && warden) {
+					c->maxhp = c->maxhp * 3 / 2;
+					c->health = c->maxhp;
+					warden = false;
+				}
+				c->guard = arm;
+				c->hx = x;
+				c->hy = y;
+				break;
+			}
 		}
 	}
 }
 
-static void spawn_guard(int arm) {
-	// the hive notices the theft: a pack climbs out of the rock of that arm
-	int n = 3 + (enhanced_ticks > 60 * 60 ? 1 : 0);
-	for(int k=0; k<n; k++) {
-		for(int tries=0; tries<40; tries++) {
-			int lx = RAND(70, CELL_W - 70), ly = RAND(70, CELL_H - 70);
-			if(!near_closed_side(arm, lx, ly))
-				continue;
-			float x = (float)(lx + (CELL_GX[arm] - gx) * CELL_W), y = (float)(ly + (CELL_GY[arm] - gy) * CELL_H);
-			if(world_blocked((int)x, (int)y, false) || distance(x, y, player.x, player.y) < 260)
-				continue;
-			CRITTER *c = add_critter(x, y, 0);
-			critter_set_type(c, (k == 0 && enhanced_ticks > 60 * 45) ? CT_STRIKER : CT_RUNNER);
-			for(int q=0; q<5; q++)
-				add_particle(x, y, RANDF(-1.5, 1.5), RANDF(-2.0, 0.3), RAND(120,170), RAND(80,110), RAND(40,60), RAND(10,25));
-			break;
-		}
-	}
+bool enhanced_guard_alert(int arm) {
+	return arm > 0 && arm < 5 && alert[arm];
+}
+
+bool enhanced_guard_resting(CRITTER *c) {
+	if(alert[c->guard])
+		return false;
+	if(distance(c->x, c->y, c->hx, c->hy) >= 24)
+		return false;
+	c->dirx = c->diry = 0;
+	if(c->health < c->maxhp)
+		c->health = (c->health + 2 > c->maxhp) ? c->maxhp : c->health + 2;
+	return true;
 }
 
 static void turret_fire(float px, float py) {
@@ -626,15 +684,61 @@ static void turret_fire(float px, float py) {
 	}
 }
 
+static bool carrying_arm_is(int arm) {
+	return carrying == arm;
+}
+
 static void cells_update(int here) {
-	// cells come back some time after they were taken
+	// cells come back some time after they were taken (with fresh guardians)
 	for(int i=1; i<5; i++)
-		if(!pcell[i].present && enhanced_ticks >= pcell[i].back_tick)
+		if(!pcell[i].present && enhanced_ticks >= pcell[i].back_tick && !carrying_arm_is(i)) {
 			pcell[i].present = true;
+			need_guards[i] = true;
+			place_cell(i);					// a new spot every time
+			if(i != here) {
+				char buf[64];
+				snprintf(buf, sizeof(buf), "a new %s cell has formed", DIR_NAME[i]);
+				set_message(buf);
+			}
+		}
+
+	// the guardians: alive, hurt, awake; the cell is sealed while any of them lives
+	int alive[5] = { 0, 0, 0, 0, 0 };
+	bool hurt[5] = { false, false, false, false, false };
+	for(CRITTER *c = critter_first; c; c = c->next) {
+		if(c->guard && !c->remove) {
+			alive[c->guard]++;
+			if(c->health < c->maxhp)
+				hurt[c->guard] = true;
+		}
+	}
+	for(int i=1; i<5; i++) {
+		bool was_sealed = sealed[i];
+		sealed[i] = need_guards[i] || alive[i] > 0;
+		bool was_alert = alert[i];
+		if(i == here && player.ok && alive[i] > 0) {
+			float cx = pcell[i].lx + (CELL_GX[i] - gx) * CELL_W, cy = pcell[i].ly + (CELL_GY[i] - gy) * CELL_H;
+			if(hurt[i] || distance(player.x, player.y, cx, cy) < 300)
+				alert[i] = true;
+		}
+		else
+			alert[i] = false;
+		if(alert[i] && !was_alert)
+			set_message("the guardians wake");
+		if(was_sealed && !sealed[i] && pcell[i].present) {
+			char buf[64];
+			snprintf(buf, sizeof(buf), "the %s cell is free", DIR_NAME[i]);
+			set_message(buf);
+			kills += 5;
+			float cx = pcell[i].lx + (CELL_GX[i] - gx) * CELL_W, cy = pcell[i].ly + (CELL_GY[i] - gy) * CELL_H;
+			for(int f=0; f<30; f++)
+				add_particle(cx, cy, RANDF(-2.5, 2.5), RANDF(-2.5, 2.5), ARM_COL[i][0], ARM_COL[i][1], ARM_COL[i][2], RAND(20,50));
+		}
+	}
 
 	if(player.ok) {
 		// pick one up
-		if(here > 0 && !carrying && pcell[here].present) {
+		if(here > 0 && !carrying && pcell[here].present && !sealed[here]) {
 			float cx = pcell[here].lx + (CELL_GX[here] - gx) * CELL_W;
 			float cy = pcell[here].ly + (CELL_GY[here] - gy) * CELL_H;
 			if(distance(player.x, player.y, cx, cy) < 28) {
@@ -644,7 +748,6 @@ static void cells_update(int here) {
 				char buf[64];
 				snprintf(buf, sizeof(buf), "%s cell taken: bring it to the platform", DIR_NAME[here]);
 				set_message(buf);
-				spawn_guard(here);
 				if(config.sound)
 					Mix_PlayChannel(-1, snd_power_up, 0);
 			}
@@ -665,7 +768,8 @@ static void cells_update(int here) {
 				char buf[64];
 				snprintf(buf, sizeof(buf), "%s cell: pylons are now a %s", DIR_NAME[carrying], MODE_NAME[carrying]);
 				set_message(buf);
-				pcell[carrying].back_tick = enhanced_ticks + 60 * 45;
+				pcell[carrying].back_tick = enhanced_ticks + (long)(60 * RANDF(100, 160));	// a long wait, a little different each time
+				pcell[carrying].present = false;
 				carrying = 0;
 				kills += 5;
 				if(config.sound)
@@ -724,6 +828,10 @@ static void switch_cell(int ngx, int ngy) {
 	int i = cell_index(gx, gy);
 	cur_bground = scr[i].cur;
 	orig_bground = scr[i].orig;
+
+	// the guardians stand where the arm's cell is
+	if(i > 0 && need_guards[i])
+		spawn_cell_guards(i);
 
 	// the first visit in a long while: the arm has something lying around
 	if(i > 0 && enhanced_ticks - arm_last_loot[i] > 60 * 40) {
@@ -839,6 +947,11 @@ void enhanced_begin() {
 		arm_timer[i] = 0;
 	}
 	make_cell_sprites();
+	for(int i=0; i<5; i++) {
+		need_guards[i] = (i > 0);
+		sealed[i] = (i > 0);
+		alert[i] = false;
+	}
 	carrying = 0;
 	mode = 0;
 	mode_until = 0;
@@ -899,6 +1012,13 @@ static void draw_world_overlays(SDL_Surface *bmp) {
 		int y = (int)(pcell[here].ly + (CELL_GY[here] - gy) * CELL_H) + (int)(sinf(enhanced_ticks * 0.07f) * 2.5f);
 		blit_center(bmp, glow_spr[here], x, y);
 		blit_center(bmp, cell_spr[here], x, y);
+		if(sealed[here]) {			// a ring of light: the guardians have to be beaten first
+			for(int k=0; k<24; k++) {
+				float a = k * 6.2831853f / 24 + enhanced_ticks * 0.03f;
+				rect(bmp, x + (int)(cosf(a) * 30), y + (int)(sinf(a) * 30), 2, 2,
+					ARM_COL[here][0], ARM_COL[here][1], ARM_COL[here][2]);
+			}
+		}
 	}
 
 	// the active pylon glows in its cell's colour, the field shows as a ring around the platform
@@ -924,7 +1044,7 @@ void enhanced_draw(SDL_Surface *bmp) {
 	int cnt[5] = { 0, 0, 0, 0, 0 };
 	for(CRITTER *c = critter_first; c; c = c->next) {
 		int i = cell_index(gx + fdiv((int)c->x, CELL_W), gy + fdiv((int)c->y, CELL_H));
-		if(i >= 0 && !c->remove)
+		if(i >= 0 && !c->remove && !c->guard)
 			cnt[i]++;
 	}
 	const int CW = 18, CH = 14, GAP = 2;
@@ -940,6 +1060,16 @@ void enhanced_draw(SDL_Surface *bmp) {
 			rect(bmp, cx, cy, CW, CH, 150 + red * 6, 200 - red * 8, 120 - red * 6);
 		else
 			rect(bmp, cx, cy, CW, CH, 56 + red * 14, 50 - red * 2, 40 - red * 2);
+	}
+	// the arms' power cells: a coloured dot, hollow while the guardians still hold it
+	for(int i=1; i<5; i++) {
+		if(!pcell[i].present)
+			continue;
+		int cx = ox + (CELL_GX[i] + 1) * (CW + GAP) + CW / 2 - 2;
+		int cy = oy + (CELL_GY[i] + 1) * (CH + GAP) + CH / 2 - 2;
+		rect(bmp, cx, cy, 4, 4, ARM_COL[i][0], ARM_COL[i][1], ARM_COL[i][2]);
+		if(sealed[i])
+			rect(bmp, cx + 1, cy + 1, 2, 2, 20, 16, 14);
 	}
 	// the player
 	{

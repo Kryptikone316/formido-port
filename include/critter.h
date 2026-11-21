@@ -60,6 +60,9 @@ public:
 	int maxhp;					// Health when new
 	int hs;						// Half size of the body for hits
 
+	int guard;					// Guardian of this arm's power cell (enhanced game), 0 for none
+	float hx, hy;				// ...and the spot it watches over
+
 	// Functions
 	void clear();				// Clearing function
 	void move();	// Movement function

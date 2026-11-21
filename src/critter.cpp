@@ -324,6 +324,14 @@ bool critter_collisions(CRITTER *c) {
 // Move the critter
 void CRITTER::move() {
 
+#ifdef SF3500
+	// a guardian that is at home and undisturbed just stands there
+	if(enhanced && guard && enhanced_guard_resting(this)) {
+		frame = 1;
+		return;
+	}
+#endif
+
 	// Advance the animation
 	frame += 0.15;
 	if((int)frame > 3)
@@ -339,6 +347,10 @@ void CRITTER::move() {
 	if(enhanced) {
 		float tx, ty;
 		world_target(x, y, &tx, &ty);
+		if(guard && !enhanced_guard_alert(guard)) {		// not alarmed: back to the post
+			tx = hx;
+			ty = hy;
+		}
 		angle = compute_angle(tx,ty,x,y);
 		walk_accel = ctype_stats[type].accel * enhanced_bug_speed(x, y);
 		bite = ctype_stats[type].dmg;
@@ -550,6 +562,8 @@ void CRITTER::clear() {
 	type = 0;
 	maxhp = 100;
 	hs = 16;
+	guard = 0;
+	hx = hy = 0;
 	ok = true;
 	remove = false;
 	frame = 0;
@@ -772,6 +786,7 @@ void shift_critters(float dx, float dy) {
 	for(CRITTER *c = critter_first; c; c = c->next) {
 		c->x += dx;  c->y += dy;
 		c->sx += dx; c->sy += dy;
+		c->hx += dx; c->hy += dy;
 	}
 }
 

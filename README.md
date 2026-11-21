@@ -41,11 +41,16 @@ The main menu has **play classic game** (the original, untouched) and **play enh
   screen to the north, east, south or west (rocky ground, crags that block movement and bullets, cliffs on the
   three outer sides). Bugs keep chasing across the edges. A small map in the corner shows where you are and tints a
   screen red when bugs are in it. The wasteland pictures come from `tools/make_wasteland.py`.
-- **Power cells.** Each arm holds one power cell. Carry it back and step on the platform: it sets what the pylons
-  offer, one mode at a time (a new cell switches the mode, the same cell again adds time):
+- **Power cells.** Each arm holds one power cell, sealed by guardians: a warden (a brute) with escorts, themed per arm
+  (north: strikers and runners, east: drones and runners, south: drones and strikers, west: a swarm of runners).
+  They stand watch, wake when you come near or hurt one, and walk home and heal if you leave. Defeat them all to free
+  the cell (a ring of light marks a sealed cell, and the map shows its dot hollow). Carry it to the stone platform:
+  it sets what the pylons offer, one mode at a time (a new cell switches the mode for 2 minutes, the same cell again
+  adds 90 seconds, up to 4):
   north = the north pylon becomes an automatic turret, east = bombs and mines are dropped on the platform,
   south = a medbay (the platform heals fast), west = a slowing field around the platform.
-  Taking a cell wakes the hive: a pack climbs out of the rock of that arm. Carrying slows you a little.
+  Carrying slows you a little. After a delivery the cell comes back after 100 to 160 seconds, in a new place, with
+  fresh guardians that grow stronger the longer the match has gone on.
 - **Bug ranks.** Drone (the classic bug), runner (small, fast, in packs), striker (tough, hits harder), brute (huge,
   slow). They are the classic bug's pictures scaled and recoloured. They appear as the match goes on.
 - **The hive adapts.** It watches how you play: standing still brings heavier bugs, running around brings fast

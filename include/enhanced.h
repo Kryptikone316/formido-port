@@ -71,6 +71,10 @@ bool world_blocked(int x, int y, bool bullet);
 // Where a bug at (x,y) should walk to: the player, or the doorway to the centre screen
 void world_target(float x, float y, float *tx, float *ty);
 
+// Guardians of the power cells: is the arm's guard alarmed, and may this guardian rest at its post?
+bool enhanced_guard_alert(int arm);
+bool enhanced_guard_resting(CRITTER *c);
+
 // How fast the player walks (slower while carrying a power cell) and how fast a bug at (x,y) may walk
 // (slower inside the west pylon's field)
 float enhanced_player_speed();
