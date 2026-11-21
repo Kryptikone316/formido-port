@@ -41,6 +41,7 @@
 #include "bomb.h"
 #include "hof.h"
 #include "enhanced.h"
+#include "tuning.h"
 
 
 // Array containing currently pressed keys
@@ -141,7 +142,7 @@ void create_critters() {
 #ifdef SF3500
 	if(enhanced && create_count == 0) {
 		enhanced_spawn_event();
-		create_count = create_delay * 6 / 5;		// the ranks are tougher, so the hive sends them a little less often
+		create_count = (int)(create_delay * tune.spawn_delay_mult);		// the ranks are tougher, so the hive sends them a little less often (tuning file)
 	}
 	else if(!enhanced)
 #endif
@@ -501,7 +502,14 @@ void start_game() {
 	sf3500_set_enhanced(enhanced ? 1 : 0);
 	sf3500_set_in_game(1);
 #endif
+#ifdef FORMIDO_TESTHOOKS
+	bool fast_forward = getenv("FORMIDO_FAST") != NULL;		// bot runs: no drawing, no pacing, three ticks per pass
+#endif
 	while(!main_loop_done) {
+#ifdef FORMIDO_TESTHOOKS
+		if(fast_forward)
+			timer_count = 3;
+#endif
 		// Handle events
 		SDL_Event event;
 #ifdef SF3500
@@ -648,6 +656,9 @@ void start_game() {
 
 		// Draw the scene
 		if(!game_paused) {
+#ifdef FORMIDO_TESTHOOKS
+			if(!fast_forward)
+#endif
 			draw(screen);
 			frames_drawn++;
 		}
@@ -655,6 +666,12 @@ void start_game() {
 	}
 
 
+#ifdef FORMIDO_TESTHOOKS
+	if(getenv("FORMIDO_BOT")) {
+		enhanced_bot_report();				// a bot run ends here: one result line, then out
+		exit(0);
+	}
+#endif
 #ifdef SF3500
 	sf3500_set_in_game(0);
 	enhanced_end();

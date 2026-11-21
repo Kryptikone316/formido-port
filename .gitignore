@@ -2,3 +2,6 @@ obj-sf3500*/
 *.mipsel
 run*/
 package/
+botruns/
+obj-native/
+formido-native

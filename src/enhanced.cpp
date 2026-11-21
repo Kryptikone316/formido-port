@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+#include <time.h>
 #include <unistd.h>
 #include "SDL.h"
 #include "SDL_image.h"
@@ -26,8 +27,18 @@
 #include "mymath.h"
 #include "font.h"
 #include "enhanced.h"
+#include "tuning.h"
 
 bool enhanced = false;
+
+#ifdef FORMIDO_TESTHOOKS
+static bool bot_in_match = false;
+static int bot_calls = 0;
+static int bot_peak_bugs = 0;
+static int bot_tyrants_seen = 0;
+static long bot_last_tick = -1;
+static void bot_minute_log();
+#endif
 
 static int stat_kills[NUM_CTYPES];
 static int stat_cells = 0;
@@ -325,19 +336,22 @@ void critter_set_type(CRITTER *c, int type) {
 	if(type > 0) {
 		float t = (float)(enhanced_ticks / 60);
 		if(t > 900) t = 900;
-		mul += 0.4f * t / 900.0f;		// the hive's bugs toughen slowly
+		mul += tune.time_toughening * t / 900.0f;		// the hive's bugs toughen slowly
 	}
 	// the hive grows stronger with every Tyrant it loses: +3 % health and +1.5 % speed each time
 	int lvl = hive_level > 30 ? 30 : hive_level;
 	if(type == CT_TYRANT)
-		mul = 1.0f + 0.3f * lvl;				// the bosses themselves grow faster
+		mul = 1.0f + tune.tyrant_health_growth * lvl;		// the bosses themselves grow faster
 	else
-		mul *= 1.0f + 0.03f * lvl;
+		mul *= 1.0f + tune.hive_health_per_tyrant * lvl;
 	// no two bugs are quite the same: health +-15 %, speed +-10 %
-	c->maxhp = (int)(ctype_stats[type].hp * mul * (type == CT_TYRANT ? 1.0f : RANDF(0.85f, 1.15f)));
+	if(type == CT_TYRANT)
+		c->maxhp = (int)(tune.tyrant_health * mul);
+	else
+		c->maxhp = (int)(ctype_stats[type].hp * mul * tune.bug_health_mult * RANDF(0.85f, 1.15f));
 	c->health = c->maxhp;
 	c->hs = ctype_stats[type].hs;
-	c->spd = RANDF(0.9f, 1.1f) * (type == CT_TYRANT ? 1.0f : 1.0f + 0.015f * lvl);
+	c->spd = RANDF(0.9f, 1.1f) * (type == CT_TYRANT ? 1.0f : (1.0f + tune.hive_speed_per_tyrant * lvl) * tune.bug_speed_mult);
 }
 
 
@@ -360,8 +374,8 @@ static char msg[64] = "";
 static int msg_timer = 0;
 
 // special ammunition: type = the bug rank it is made against
-#define AMMO_ROUNDS 160			// about 13 seconds of continuous fire
-#define AMMO_SECONDS 45			// ...and the rounds spoil after this long, fired or not
+#define AMMO_ROUNDS ((int)tune.ammo_rounds)
+#define AMMO_SECONDS ((int)tune.ammo_seconds)
 #define NUM_AMMO 4			// one kind of rounds for each of the first four ranks
 static const char *AMMO_NAME[NUM_AMMO] = { "hollow-point", "flechette", "incendiary", "armour-piercing" };
 static const char *RANK_NAME[NUM_AMMO] = { "drones", "runners", "strikers", "brutes" };
@@ -482,6 +496,9 @@ static int pick_type() {
 
 	for(int i=0; i<NUM_AMMO; i++)
 		w[i] *= 1.0f - 0.7f * ammo_counter[i];
+	w[CT_RUNNER] *= tune.weight_runner;
+	w[CT_STRIKER] *= tune.weight_striker;
+	w[CT_BRUTE] *= tune.weight_brute;
 
 	float sum = 0;
 	for(int i=0; i<NUM_CTYPES; i++) sum += w[i];
@@ -538,7 +555,7 @@ void enhanced_spawn_event() {
 	for(CRITTER *c = critter_first; c; c = c->next)
 		if(!c->guard && !c->remove)
 			roaming++;
-	if(roaming >= ENHANCED_MAX_CRITTERS || num_critters >= ENHANCED_MAX_CRITTERS + 60)
+	if(roaming >= (int)tune.max_roaming_bugs || num_critters >= (int)tune.max_roaming_bugs + 60)
 		return;
 	int type = pick_type();
 	int n = 1;
@@ -593,7 +610,7 @@ static bool alert[5];			// the arm's guardians are awake
 static float garrison[5];		// how strong this time's guardians are: 0.7 (light) .. 1.4 (heavy)
 
 static void roll_garrison(int i) {
-	garrison[i] = RANDF(0.75f, 1.35f);
+	garrison[i] = RANDF(tune.garrison_min, tune.garrison_max);
 }
 
 // 1 light, 2 average, 3 heavy: shown on the map next to the arm
@@ -607,14 +624,14 @@ static SDL_Surface *cell_spr[5];	// the cell
 static SDL_Surface *glow_spr[6];
 static SDL_Surface *glow_item[9];		// soft light under the pickups: [0-3] ammo, [4-7] traps, [8] bunker kit	// soft light in the arm's colour ([5]: the healing plant)
 
-#define MODE_SECONDS	120
+#define MODE_SECONDS	((int)tune.pylon_mode_seconds)
 #define MODE_ADD_SECONDS 90
 #define MODE_MAX_SECONDS 240
 
 static bool mode_on() { return mode != 0 && enhanced_ticks < mode_until; }
 
 float enhanced_player_speed() {
-	return (carrying ? 0.88f : 1.0f) * (enhanced_ticks < boon_until ? 1.2f : 1.0f);
+	return (carrying ? tune.carry_speed : 1.0f) * (enhanced_ticks < boon_until ? tune.boon_speed_mult : 1.0f);
 }
 
 float enhanced_bug_speed(float x, float y) {
@@ -918,7 +935,7 @@ static void cells_update(int here) {
 				char buf[64];
 				snprintf(buf, sizeof(buf), "%s cell: pylons are now a %s", DIR_NAME[carrying], MODE_NAME[carrying]);
 				set_message(buf);
-				pcell[carrying].back_tick = enhanced_ticks + (long)(60 * RANDF(100, 160));	// a long wait, a little different each time
+				pcell[carrying].back_tick = enhanced_ticks + (long)(60 * RANDF(tune.cell_respawn_min_seconds, tune.cell_respawn_max_seconds));	// a long wait, a little different each time
 				pcell[carrying].present = false;
 				carrying = 0;
 				stat_cells++;
@@ -956,7 +973,7 @@ static void cells_update(int here) {
 // Healing plants: a rare green plant in the arms. Standing near it mends a little; it shrivels as it is used
 // (and as time passes) and then disappears.
 
-#define HEAL_POOL		40			// hit points it can give in all
+#define HEAL_POOL		((int)tune.plant_pool)
 #define HEAL_LIFE		(60 * 70)	// ticks until it withers on its own
 #define HEAL_RADIUS		52
 #define MAX_HEAL_PLANTS	3
@@ -1046,7 +1063,7 @@ static void heal_plant_update(int here) {
 				already = true;
 		if(!already && spawn_heal_plant(here)) {
 			hplant_ready = false;
-			hplant_timer = 60 * (RAND(120, 200));		// a long wait before the next one: the pylon stays the reliable heal
+			hplant_timer = (int)(60 * RANDF(tune.plant_min_seconds, tune.plant_max_seconds));		// a long wait before the next one: the pylon stays the reliable heal
 		}
 	}
 	for(int i=0; i<MAX_HEAL_PLANTS; i++) {
@@ -1076,8 +1093,8 @@ static int burrow_timer = 0;
 static bool dust_stun = false;				// a stunning burrower's dust is blue-white
 static int player_stun = 0;					// ticks the player cannot walk
 static long stun_immune_until = 0;			// no second stun straight after one
-#define STUN_TICKS		75				// 1.25 seconds
-#define STUN_IMMUNE		(60 * 5)
+#define STUN_TICKS		((int)tune.stun_ticks)
+#define STUN_IMMUNE		((int)(60 * tune.stun_immune_seconds))
 static bool force_stunner = false;			// test hook
 static bool test_stunnow = false;			// test hook
 static int rumble_messages = 0;
@@ -1188,8 +1205,8 @@ static bool burrower_update_impl(CRITTER *c) {
 				r.w = crater_spr->w;
 				r.h = crater_spr->h;
 				SDL_BlitSurface(crater_spr, NULL, cur_bground, &r);
-				if(player.ok && distance(c->x, c->y, player.x, player.y) < 56 && !enhanced_bunker_absorb(st ? 10 : 25)) {
-					player.health -= st ? 10 : 25;
+				if(player.ok && distance(c->x, c->y, player.x, player.y) < 56 && !enhanced_bunker_absorb((int)(st ? tune.stunner_damage : tune.burrower_damage))) {
+					player.health -= (int)(st ? tune.stunner_damage : tune.burrower_damage);
 					if(player.health <= 0)
 						player.die();
 					if(st) {
@@ -1247,7 +1264,7 @@ static void spawn_burrower(int ci) {
 			continue;
 		// after at least one Hive Tyrant has been slain some of them stun: 30 % of the burrowers after the first, 15 % more
 		// for each further one (at most 80 %)
-		float chance = stat_tyrants > 0 ? 0.30f + 0.15f * (stat_tyrants - 1) : 0.0f;
+		float chance = stat_tyrants > 0 ? tune.stunner_chance_first + tune.stunner_chance_step * (stat_tyrants - 1) : 0.0f;
 		if(chance > 0.80f)
 			chance = 0.80f;
 		bool stun_variant = force_stunner || RANDF(0, 1) < chance;
@@ -1269,11 +1286,11 @@ static void spawn_burrower(int ci) {
 }
 
 static void burrow_update(int here) {
-	if(here <= 0 || !player.ok || enhanced_ticks < 60 * 60)		// never in the centre; nothing in the first minute
+	if(here <= 0 || !player.ok || enhanced_ticks < (long)(60 * tune.burrower_first_seconds))		// never in the centre; nothing at the start
 		return;
 	if(--burrow_timer > 0)
 		return;
-	burrow_timer = 60 * (RAND(80, 140));							// few and far between
+	burrow_timer = (int)(60 * RANDF(tune.burrower_min_seconds, tune.burrower_max_seconds));	// few and far between
 	int allowed = (enhanced_ticks > 60 * 480) ? 2 : 1;
 	if(burrowers_in_cell(here) < allowed)
 		spawn_burrower(here);
@@ -1294,13 +1311,13 @@ static void traps_draw_under(SDL_Surface *bmp);
 static void tyrant_draw_under(SDL_Surface *bmp);
 void spawn_heal_plant_at(float x, float y);
 
-#define BUNKER_INTEGRITY	800.0f
-#define BUNKER_ABSORB		0.35f			// share of a bite that reaches it (it is built to take them)
+#define BUNKER_INTEGRITY	(tune.bunker_integrity)
+#define BUNKER_ABSORB		(tune.bunker_absorb)
 #define BUNKER_FATIGUE		0.4f			// integrity lost per second regardless
 #define BUNKER_ENTER		22
 #define BUNKER_IDLE_TICKS	(60 * 90)
 #define BLAST_RADIUS		125.0f
-#define BLAST_DAMAGE		190.0f
+#define BLAST_DAMAGE		(tune.bunker_blast_damage)
 
 struct BUNKER {
 	bool ok;
@@ -1461,7 +1478,7 @@ void enhanced_guardian_killed(float x, float y, int type) {
 	}
 	if(bunker_anything())
 		return;
-	float chance = (type == CT_BRUTE) ? (1.0f / 3.0f) : 0.15f;	// rare, but it should turn up: the warden is the best bet
+	float chance = (type == CT_BRUTE) ? tune.warden_drop_chance : tune.bunker_drop_chance;	// rare, but it should turn up: the warden is the best bet
 	if(RANDF(0, 1) >= chance)
 		return;
 	float kx = x, ky = y;
@@ -1596,7 +1613,7 @@ static void bunker_draw_over(SDL_Surface *bmp) {
 
 #define BURN_TICKS		180
 #define BLEED_TICKS		300
-#define BLEED_VULN		1.25f
+#define BLEED_VULN		(tune.bleed_vulnerability)
 
 static int player_burn = 0, player_bleed = 0, player_slow = 0;
 
@@ -1616,8 +1633,11 @@ int enhanced_damage(CRITTER *c, int dmg) {
 }
 
 int enhanced_player_bite(int bite) {
+	float m = tune.bug_damage_mult;
 	if(player_bleed > 0)
-		return scaled_int(bite, BLEED_VULN);
+		m *= BLEED_VULN;
+	if(m != 1.0f)
+		return scaled_int(bite, m);
 	return bite;
 }
 
@@ -2045,7 +2065,9 @@ static void trap_update(int here) {
 			}
 			if(!tick)
 				continue;
-			int dam = TRAP_DAMAGE[ty];
+			int dam = TRAP_DAMAGE[ty] > 0 ? (int)(TRAP_DAMAGE[ty] * tune.trap_damage_mult + 0.5f) : 0;
+			if(TRAP_DAMAGE[ty] > 0 && dam < 1)
+				dam = 1;
 			if(ty == TRAP_NAPALM)
 				c->burn = BURN_TICKS;				// keeps burning after it has left the field
 			else
@@ -2073,7 +2095,9 @@ static void trap_update(int here) {
 				tr->integrity -= 0.25f;
 			}
 			if(tick && TRAP_DAMAGE[ty] > 0) {
-				int dam = TRAP_DAMAGE[ty];
+				int dam = (int)(TRAP_DAMAGE[ty] * tune.trap_damage_mult + 0.5f);
+				if(dam < 1)
+					dam = 1;
 				if(ty == TRAP_NAPALM)
 					player_burn = BURN_TICKS;
 				else
@@ -2184,7 +2208,7 @@ bool enhanced_tyrant_active() {
 }
 
 int enhanced_reload() {
-	return enhanced_ticks < boon_until ? 3 : 5;
+	return (int)(enhanced_ticks < boon_until ? tune.boon_fire_delay_ticks : tune.fire_delay_ticks);
 }
 
 static bool has_mut(int m) {
@@ -2472,6 +2496,9 @@ static void tyrant_spawn() {
 		c->health = c->maxhp;
 	}
 #endif
+#ifdef FORMIDO_TESTHOOKS
+	bot_tyrants_seen++;
+#endif
 	ty_alive = true;
 	ty_x = bx;
 	ty_y = by;
@@ -2501,8 +2528,8 @@ void enhanced_tyrant_slain(float x, float y) {
 	ty_cycle++;
 	hive_level++;
 	stat_tyrants++;
-	ty_next = enhanced_ticks + 60 * 60 * 7 + 60 * (long)(RAND(0, 60));
-	boon_until = enhanced_ticks + 60 * 90;
+	ty_next = enhanced_ticks + (long)(3600 * tune.tyrant_interval_minutes) + 60 * (long)(RAND(0, 60));
+	boon_until = enhanced_ticks + (long)(60 * tune.boon_seconds);
 	charge_state = 0;
 	stomp_t = 0;
 	for(int i=0; i<MAX_ACID; i++)
@@ -2657,9 +2684,9 @@ static void tyrant_draw_over(SDL_Surface *bmp) {
 // Spores: now and then a phantom leaves a spore pod. It is a mushroom with a different look: the same effect when picked up.
 // Guards against an endless chain: at most one spore around, a modest chance, it rots in 25 s, and taking one locks out spore
 // drops for 150 seconds (the effect itself lasts 10 to 15).
-#define SPORE_CHANCE	0.12f
+#define SPORE_CHANCE	(tune.spore_chance)
 #define SPORE_LIFE		(60 * 25)
-#define SPORE_LOCKOUT	(60 * 150)
+#define SPORE_LOCKOUT	((int)(60 * tune.spore_lockout_seconds))
 static bool spore_ok = false;
 static float spore_x = 0, spore_y = 0;
 static int spore_life = 0;
@@ -2738,7 +2765,7 @@ static void phantom_update() {
 			for(CRITTER *c = critter_first; c; c = c->next)
 				if(c->type == CT_PHANTOM && !c->remove)
 					n++;
-			if(n < MAX_PHANTOMS) {
+			if(n < (int)tune.phantom_max) {
 				for(int tries=0; tries<40; tries++) {
 					float a = RANDF(0, 6.2831853f), r = RANDF(210, 340);
 					float x = player.x + cosf(a) * r, y = player.y + sinf(a) * r * 0.8f;
@@ -2783,10 +2810,10 @@ static int ammo_timer = 0;
 static SDL_Surface *ammo_spr[NUM_AMMO];
 
 float enhanced_ammo_mult(int rank) {
-	float boon = enhanced_ticks < boon_until ? 1.6f : 1.0f;			// the Tyrant's spoils: all hits count more
+	float boon = enhanced_ticks < boon_until ? tune.boon_damage_mult : 1.0f;			// the Tyrant's spoils: all hits count more
 	if(ammo_type < 0 || ammo_left <= 0)
 		return boon;
-	return boon * ((rank == ammo_type) ? AMMO_BONUS[ammo_type] : 0.9f);
+	return boon * ((rank == ammo_type) ? 1.0f + (AMMO_BONUS[ammo_type] - 1.0f) * tune.ammo_bonus_scale : 0.9f);
 }
 
 void enhanced_ammo_fired() {
@@ -2878,7 +2905,7 @@ static void ammo_update(int here) {
 	}
 	if(here > 0 && player.ok) {
 		if(--ammo_timer <= 0) {
-			ammo_timer = 60 * (RAND(32, 50));			// infrequent, and only while out in an arm
+			ammo_timer = (int)(60 * RANDF(tune.ammo_min_seconds, tune.ammo_max_seconds));			// infrequent, and only while out in an arm
 			bool already = false;
 			for(int i=0; i<MAX_AMMO_BOXES; i++) {
 				if(abox[i].ok && cell_index(gx + fdiv((int)abox[i].x, CELL_W), gy + fdiv((int)abox[i].y, CELL_H)) == here)
@@ -2986,6 +3013,13 @@ static void spawn_arm_loot(int ci) {
 void enhanced_update() {
 	enhanced_ticks++;
 #ifdef FORMIDO_TESTHOOKS
+	bot_minute_log();
+	if(getenv("FORMIDO_BOT") && enhanced_ticks > 60L * 60L * 120L) {		// a run that survives two hours is cut off
+		extern bool main_loop_done;
+		main_loop_done = true;
+	}
+#endif
+#ifdef FORMIDO_TESTHOOKS
 	if(getenv("FORMIDO_HPLOG") && enhanced_ticks % (atoi(getenv("FORMIDO_HPLOG")) > 1 ? atoi(getenv("FORMIDO_HPLOG")) : 60) == 0)
 		fprintf(stderr, "tick %ld hp %d at %d,%d blocked %d thorn %d cell %d,%d\n", enhanced_ticks, player.health, (int)player.x, (int)player.y, (int)world_blocked((int)player.x, (int)player.y, false), (int)world_thorns((int)player.x, (int)player.y), gx, gy);
 	if(getenv("FORMIDO_HPLOG") && enhanced_ticks % (atoi(getenv("FORMIDO_HPLOG")) > 1 ? atoi(getenv("FORMIDO_HPLOG")) : 60) == 0) {
@@ -3024,7 +3058,7 @@ void enhanced_update() {
 		float dx = (player.x - CELL_W / 2) / 100.0f, dy = (player.y - CELL_H / 2) / 112.0f;
 		bool medbay = mode_on() && mode == 3;
 		if(dx * dx + dy * dy < 1.0f && player.health < 200 && enhanced_ticks - last_damage_tick > (medbay ? 30 : 90)) {
-			if(++regen_acc >= (medbay ? 4 : 12)) {
+			if(++regen_acc >= (int)(medbay ? tune.medbay_regen_ticks : tune.platform_regen_ticks)) {
 				regen_acc = 0;
 				player.health++;
 				prev_health = player.health;
@@ -3097,6 +3131,16 @@ void enhanced_update() {
 }
 
 void enhanced_begin() {
+	tune_load("formido_tuning.cfg");		// the tuning file in the port folder: read at the start of every enhanced match
+#ifdef FORMIDO_TESTHOOKS
+	if(getenv("FORMIDO_SEED"))
+		srand((unsigned)atoi(getenv("FORMIDO_SEED")));
+	if(getenv("FORMIDO_BOT"))
+		bot_in_match = true;
+	bot_peak_bugs = 0;
+	bot_tyrants_seen = 0;
+	bot_last_tick = -1;
+#endif
 	if(!world_loaded)
 		load_world();
 	make_sprites();
@@ -3137,7 +3181,7 @@ void enhanced_begin() {
 		abox[i].ok = false;
 	ammo_type = -1;
 	ammo_left = 0;
-	ammo_timer = 60 * (RAND(32, 50));
+	ammo_timer = (int)(60 * RANDF(tune.ammo_min_seconds, tune.ammo_max_seconds));
 	burrow_timer = 60 * (RAND(40, 80));
 	rumble_messages = 0;
 	if(!hplant_img) {
@@ -3171,7 +3215,7 @@ void enhanced_begin() {
 	make_spore_sprite();
 	player_burn = player_bleed = player_slow = 0;
 	ty_phase = TY_WAITING;
-	ty_next = 60 * 60 * 8;
+	ty_next = (long)(3600 * tune.tyrant_first_minutes);
 	ty_cycle = 0;
 	hive_level = 0;
 	boon_until = 0;
@@ -3798,5 +3842,229 @@ void enhanced_show_legend() {
 		usleep(25000);			// ~40 frames a second is plenty for a still picture
 	}
 }
+
+
+///////////////////////////////////////////////////////////////////////////////
+// Test builds only: a bot that plays the enhanced game through the same buttons a person uses (FORMIDO_BOT=<skill 0..2>,
+// FORMIDO_SEED=<n>, FORMIDO_FAST=1 for no drawing or pacing). It stays on the platform screen: it never fetches power cells,
+// ammunition or traps from the arms, so what it measures is the game without the arm economy, a conservative baseline.
+// skill 0: slow reactions (200 ms), sloppy aim; 1: 150 ms; 2: 100 ms, tight aim, uses pickups sensibly; 3: expert, 50 ms.
+
+#ifdef FORMIDO_TESTHOOKS
+
+
+static const unsigned B_LEFT = 1u << 0, B_RIGHT = 1u << 1, B_UP = 1u << 2, B_DOWN = 1u << 3, B_A = 1u << 4, B_B = 1u << 5,
+	B_L1 = 1u << 6, B_R1 = 1u << 7, B_X = 1u << 8, B_Y = 1u << 9, B_R2 = 1u << 13;
+
+unsigned enhanced_bot_buttons(void) {
+	bot_calls++;
+	if(!bot_in_match) {
+		// the menu, by the clock (a pass of its loop can be microseconds): down once, to "play enhanced game", then select
+		struct timespec ts;
+		clock_gettime(CLOCK_MONOTONIC, &ts);
+		static long long t0 = 0;
+		long long now = (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+		if(!t0)
+			t0 = now;
+		long long t = now - t0;
+		if(t >= 1000 && t < 1250)
+			return B_DOWN;
+		if(t >= 1800 && t < 2050)
+			return B_A;
+		return 0;
+	}
+	static int skill = -1;
+	static unsigned held = 0;
+	static int wait = 0;
+	static int pulse = 0;
+	static int last_sector = 0, lag = 0;
+	if(skill < 0)
+		skill = atoi(getenv("FORMIDO_BOT"));
+	if(!player.ok)
+		return 0;
+	if(num_critters > bot_peak_bugs)
+		bot_peak_bugs = num_critters;
+	// a decision every few passes, like a person's reaction time (a pass is 3 ticks)
+	int react = skill == 0 ? 4 : (skill == 1 ? 3 : (skill == 2 ? 2 : 1));
+	if(--wait > 0 && pulse <= 0)
+		return held;
+	wait = react;
+	if(pulse > 0)
+		pulse--;
+
+	float px = player.x, py = player.y;
+	int near90 = 0, near130 = 0, near220 = 0;
+	CRITTER *nearest = NULL;
+	float nd = 1e9f;
+	float reach = 130.0f + 20.0f * skill;
+	struct BP { float x, y, R; };
+	static BP bp[160];
+	int nb = 0;
+	for(CRITTER *c = critter_first; c && nb < 160; c = c->next) {
+		if(c->remove || c->hidden)
+			continue;
+		float dx = px - c->x, dy = py - c->y;
+		float d = sqrtf(dx * dx + dy * dy) + 0.01f;
+		if(d < nd) { nd = d; nearest = c; }
+		if(d < 90) near90++;
+		if(d < 130) near130++;
+		if(d < 220) near220++;
+		float R = reach * ((c->type == CT_BRUTE || c->type == CT_TYRANT) ? 1.6f : 1.0f);
+		if(d < 400) {
+			// where it will be in about half a second: it keeps walking at us
+			float step = (c->type == CT_RUNNER ? 40.0f : (c->type == CT_BRUTE || c->type == CT_TYRANT ? 14.0f : 26.0f));
+			bp[nb].x = c->x + (px - c->x) / d * step;
+			bp[nb].y = c->y + (py - c->y) / d * step;
+			bp[nb].R = R;
+			nb++;
+		}
+	}
+	// a target worth walking to (skill 1 and 2): health, bombs and mines (never the mushroom), a healing plant when hurt
+	float tx = 0, ty = 0;
+	bool have_target = false;
+	if(skill >= 1 && near90 == 0) {
+		float bd = 1e9f;
+		for(int i=0; i<MAX_POWER_UPS; i++) {
+			if(!power_up[i].ok || power_up[i].type == POWER_UP_MUSHROOM)
+				continue;
+			float lim = (power_up[i].type == POWER_UP_HEALTH && player.health < 150) ? 300.0f : 150.0f;
+			float d = distance(px, py, (float)power_up[i].x, (float)power_up[i].y);
+			if(d < lim && d < bd) { bd = d; tx = (float)power_up[i].x; ty = (float)power_up[i].y; have_target = true; }
+		}
+		for(int i=0; i<MAX_HEAL_PLANTS; i++) {
+			if(!hplant[i].ok || player.health >= 150)
+				continue;
+			float d = distance(px, py, hplant[i].x, hplant[i].y);
+			if(d < 260 && d < bd) { bd = d; tx = hplant[i].x; ty = hplant[i].y; have_target = true; }
+		}
+	}
+	// look ahead: score standing still and the eight ways to walk (45 pixels, about seven ticks of walking), keep the safest
+	float cx = 320.0f - px, cy = 240.0f - py;
+	float cd = sqrtf(cx * cx + cy * cy) + 0.01f;
+	unsigned b = 0;
+	{
+		static const int DX[9] = { 0, 1, 1, 0, -1, -1, -1, 0, 1 };
+		static const int DY[9] = { 0, 0, 1, 1, 1, 0, -1, -1, -1 };
+		float best = 1e18f;
+		int bi = 0;
+		for(int k=0; k<9; k++) {
+			float l = (DX[k] && DY[k]) ? 0.7071f : 1.0f;
+			float fx = px + DX[k] * 45.0f * l, fy = py + DY[k] * 45.0f * l;
+			if(k > 0 && world_blocked((int)fx, (int)fy, false))
+				continue;
+			float cost = 0;
+			for(int i=0; i<nb; i++) {
+				float dx = fx - bp[i].x, dy = fy - bp[i].y;
+				float d = sqrtf(dx * dx + dy * dy);
+				if(d < bp[i].R) {
+					float w = (bp[i].R - d);
+					cost += w * w;
+				}
+			}
+			// stay near the middle of the platform: the arms are not part of what this bot plays
+			float ex = fx - 320.0f, ey = fy - 240.0f;
+			float ed = sqrtf(ex * ex + ey * ey);
+			if(ed > 140.0f)
+				cost += (ed - 140.0f) * (ed - 140.0f) * 1.5f;
+			if(have_target) {
+				float td = distance(fx, fy, tx, ty);
+				cost += td * 6.0f;
+			}
+			if(k == 0)
+				cost += (near220 == 0 && cd < 90.0f && player.health < 200) ? -50.0f : 40.0f;		// standing still mends on the platform
+			if(cost < best) { best = cost; bi = k; }
+		}
+		if(DX[bi] > 0) b |= B_RIGHT;
+		if(DX[bi] < 0) b |= B_LEFT;
+		if(DY[bi] > 0) b |= B_DOWN;
+		if(DY[bi] < 0) b |= B_UP;
+	}
+	// aim (eight directions only) along the line that actually hits the closest bug; if no line hits one, towards the
+	// nearest bug, which is walking at us anyway. A bullet hits what is within the bug's half size of the line.
+	float range = 260.0f + 20.0f * skill;
+	{
+		int best_sector = -1;
+		float best_d = 1e9f;
+		float slack = skill == 0 ? 3.0f : 0.0f;
+		for(int k=0; k<8; k++) {
+			float ca = cosf(k * 0.785398f), sa = sinf(k * 0.785398f);
+			for(CRITTER *c = critter_first; c; c = c->next) {
+				if(c->remove || c->hidden || c->type == CT_PHANTOM)
+					continue;
+				float dx = c->x - px, dy = c->y - py;
+				float along = dx * ca + dy * sa;
+				if(along < 12.0f || along > range)
+					continue;
+				float lateral = fabsf(-dx * sa + dy * ca);
+				if(lateral < c->hs + slack && along < best_d) {
+					best_d = along;
+					best_sector = k;
+				}
+			}
+		}
+		int sector = best_sector;
+		if(sector < 0 && nearest && nd < range)
+			sector = ((int)floorf(atan2f(nearest->y - py, nearest->x - px) / 0.785398f + 0.5f) + 8) % 8;
+		if(sector >= 0) {
+			if(skill == 0) {
+				if(lag > 0) { sector = last_sector; lag--; }
+				else if(RANDF(0, 1) < 0.25f) lag = 4;
+			}
+			last_sector = sector;
+			unsigned a = 0;
+			switch(sector & 7) {
+				case 0: a = B_A; break;
+				case 1: a = B_A | B_B; break;
+				case 2: a = B_B; break;
+				case 3: a = B_B | B_Y; break;
+				case 4: a = B_Y; break;
+				case 5: a = B_Y | B_X; break;
+				case 6: a = B_X; break;
+				case 7: a = B_X | B_A; break;
+			}
+			b |= B_L1 | a;
+		}
+	}
+	// a bomb or a mine when they crowd in; the traps and the bunker kit if the bot ever has them
+	if(player.special_weapon != 0 && near130 >= 4 && skill >= 1) {
+		b = (b & ~(B_L1 | B_A | B_B | B_X | B_Y)) | B_B;		// B without L1 is "special"
+		pulse = 1;
+	}
+	if(trap_loaded >= 0 && trap_charges > 0 && near130 >= 3 && skill >= 1)
+		b |= B_R2;
+	if(kit_carried && near130 >= 4 && player.health < 140)
+		b |= B_R1;
+	held = b;
+	return b;
+}
+
+void enhanced_bot_report() {
+	int total = 0;
+	for(int i=0; i<NUM_CTYPES; i++)
+		total += stat_kills[i];
+	int dead_roaming = 0;
+	for(CRITTER *c = critter_first; c; c = c->next)
+		if(!c->remove && !c->hidden)
+			dead_roaming++;
+	printf("RESULT skill=%d seed=%s ticks=%ld secs=%ld score=%d kills=%d drone=%d runner=%d striker=%d brute=%d burrower=%d stunner=%d phantom=%d tyrant=%d tyrants_seen=%d tyrants_slain=%d hive=%d peak_bugs=%d bugs_at_end=%d capped=%d\n",
+		atoi(getenv("FORMIDO_BOT")), getenv("FORMIDO_SEED") ? getenv("FORMIDO_SEED") : "-", enhanced_ticks, enhanced_ticks / 60, kills, total,
+		stat_kills[CT_DRONE], stat_kills[CT_RUNNER], stat_kills[CT_STRIKER], stat_kills[CT_BRUTE], stat_kills[CT_BURROWER],
+		stat_kills[CT_STUNNER], stat_kills[CT_PHANTOM], stat_kills[CT_TYRANT], bot_tyrants_seen, stat_tyrants, hive_level,
+		bot_peak_bugs, dead_roaming, player.ok ? 1 : 0);
+	fflush(stdout);
+}
+
+static void bot_minute_log() {
+	if(!getenv("FORMIDO_BOT") || enhanced_ticks % 3600 != 0 || enhanced_ticks == bot_last_tick)
+		return;
+	bot_last_tick = enhanced_ticks;
+	int total = 0;
+	for(int i=0; i<NUM_CTYPES; i++)
+		total += stat_kills[i];
+	printf("MIN %ld kills=%d bugs=%d hp=%d tyrants=%d\n", enhanced_ticks / 3600, total, num_critters, player.health, stat_tyrants);
+	fflush(stdout);
+}
+
+#endif
 
 #endif

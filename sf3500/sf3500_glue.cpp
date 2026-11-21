@@ -669,10 +669,14 @@ static void test_shot(SDL_Surface *s)
 }
 #endif
 
+#ifdef FORMIDO_TESTHOOKS
+unsigned enhanced_bot_buttons(void);			/* the bot player (src/enhanced.cpp), test builds only */
+#endif
+
 static void pad_update(void)
 {
 #ifdef FORMIDO_TESTHOOKS
-    unsigned cur = getenv("FORMIDO_PAD") ? scripted_pad() : joykey_read();
+    unsigned cur = getenv("FORMIDO_BOT") ? enhanced_bot_buttons() : (getenv("FORMIDO_PAD") ? scripted_pad() : joykey_read());
 #else
     unsigned cur = joykey_read();
 #endif

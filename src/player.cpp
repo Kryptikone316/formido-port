@@ -37,6 +37,7 @@
 #include "particle.h"
 #include "bomb.h"
 #include "enhanced.h"
+#include "tuning.h"
 
 
 // Player graphics (walking)
@@ -490,8 +491,14 @@ bool PLAYER::col_critter() {
 		// Check for collisions
 		if(rects_collide(player.x-15, player.y-15, 30,30, temp->x-16, temp->y-16, 32,32)) {
 			
+#ifdef SF3500
+			float contact = enhanced ? tune.contact_speed : 0.3f;		// the tuning file's knob in the enhanced game
+			x = sx + dirx*contact;
+			y = sy + diry*contact;
+#else
 			x = sx + dirx*0.3;
 			y = sy + diry*0.3;
+#endif
 			dirx += RANDF(-1,1);
 			diry += RANDF(-1,1);
 

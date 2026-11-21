@@ -108,6 +108,10 @@ void enhanced_phantom_slain(float x, float y);	// a hallucination was killed: it
 bool enhanced_phantom_hidden(CRITTER *c);		// phantoms flicker: skipped in this frame's drawing
 void enhanced_bug_killed(int type);			// counts kills per rank for the stats strip
 
+#ifdef FORMIDO_TESTHOOKS
+void enhanced_bot_report();			// test builds: print the result line of a bot run
+#endif
+
 // Laser sight: a thin red line from the muzzle along the line of fire (called when the scene is drawn; shows
 // according to the laser_sight setting)
 void laser_sight_draw(SDL_Surface *bmp);

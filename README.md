@@ -161,6 +161,25 @@ removed and the rows drawn with the game's own font).
 Uses the Codescape toolchain and sysroot in `~/handhelds/sf3000-work/buildroot/output/host` (override with
 `MIPS_PREFIX` and `SYSROOT`). `-O2` only: no `-ffast-math` (upstream's Makefile has it) and no `-mdspr2`.
 
+## Tuning file (`formido_tuning.cfg`)
+
+All the numbers that decide how hard or generous the enhanced game is (56 of them: player speed and healing, bug health,
+speed, damage and spawn rate, how soon the Hive Tyrant comes and how strong it is, the burrowers and their stun, power-cell
+guards and respawn times, ammunition, the bunker, traps, healing plants, hallucinations and spores) are in `formido_tuning.cfg`
+in the port folder, each with a comment saying what it does and its allowed range. It is read at the start of every
+enhanced match, so edit it with a text editor and start a new game to try a change. Values outside their range are brought
+back into it, unknown or unreadable lines are reported in `log.txt`, and if the file is missing it is written again with
+the defaults; knobs added by a newer version are appended without touching your edits. The classic game ignores it.
+`contact_speed` (default 0.6) is the share of your movement you keep while a bug overlaps you; the classic game's 0.3 is
+what made swarms hard to get away from.
+
+## Bot test runs
+
+`build_native.sh` makes an x86-64 test build with the test hooks, and `run_bots.sh native <batch> <skill> <first seed> <count>`
+plays bot games with it at full speed (`FORMIDO_BOT=<skill 0-3>`, `FORMIDO_SEED`, `FORMIDO_FAST`); one `RESULT` line per game
+(seconds survived, kills by rank, Tyrants, peak bugs). `tools/bot_stats.py` summarises them. The bots stay on the platform screen
+and do not use the arms. The x86-64 build is for statistics only: the device's CPU and maths differ.
+
 ## Collision stress test
 
 `python3 tools/collision_sim.py data [--runs N] [--fast] [--substep]` reproduces the game's movement rules on the real
