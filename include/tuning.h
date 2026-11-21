@@ -18,8 +18,10 @@
 	X(contact_speed,             0.60f,  0.10f,   1.00f, "player",    "share of your movement kept while a bug overlaps you (the classic game keeps 0.30)") \
 	X(carry_speed,               0.88f,  0.30f,   1.50f, "player",    "walking speed while carrying a power cell (1.0 = full speed)") \
 	X(fire_delay_ticks,          5.0f,   2.0f,   15.0f,  "player",    "ticks between shots (60 ticks = 1 second; lower fires faster)") \
-	X(platform_regen_ticks,      12.0f,  2.0f,  120.0f,  "player",    "ticks per hit point regained on the stone platform (lower = faster)") \
-	X(medbay_regen_ticks,        4.0f,   1.0f,  120.0f,  "player",    "the same with a south (medbay) cell active") \
+	X(platform_regen_ticks,      12.0f,  1.0f,  120.0f,  "player",    "natural healing on the stone platform: ticks per hit point (60 ticks = 1 second; 12 = 5 hit points a second; lower = faster)") \
+	X(platform_regen_delay_ticks, 90.0f, 0.0f,  600.0f,  "player",    "the platform starts healing you after this many ticks without damage (90 = a second and a half)") \
+	X(medbay_regen_ticks,        4.0f,   1.0f,  120.0f,  "player",    "the same as platform_regen_ticks with a south (medbay) cell active (4 = 15 hit points a second)") \
+	X(medbay_regen_delay_ticks,  30.0f,  0.0f,  600.0f,  "player",    "the same as platform_regen_delay_ticks with a south (medbay) cell active") \
 	X(bug_health_mult,           1.00f,  0.30f,   5.00f, "bugs",      "all bugs' health (except the Tyrant) times this") \
 	X(bug_speed_mult,            1.00f,  0.50f,   2.00f, "bugs",      "all bugs' walking speed times this") \
 	X(bug_damage_mult,           1.00f,  0.25f,   5.00f, "bugs",      "damage of every bite on the player times this") \
@@ -31,7 +33,7 @@
 	X(time_toughening,           0.40f,  0.00f,   3.00f, "bugs",      "extra health of the stronger ranks after 15 minutes (0.4 = +40 %)") \
 	X(hive_health_per_tyrant,    0.03f,  0.00f,   0.50f, "tyrant",    "every bug's health grows by this share for each Tyrant slain (0.03 = +3 %)") \
 	X(hive_speed_per_tyrant,     0.015f, 0.00f,   0.20f, "tyrant",    "every bug's speed grows by this share for each Tyrant slain") \
-	X(tyrant_first_minutes,      8.0f,   0.5f,   60.0f,  "tyrant",    "minutes until the first Hive Tyrant stirs") \
+	X(tyrant_first_minutes,      5.0f,   0.5f,   60.0f,  "tyrant",    "minutes until the first Hive Tyrant stirs") \
 	X(tyrant_interval_minutes,   7.0f,   0.5f,   60.0f,  "tyrant",    "minutes between a Tyrant's death and the next one stirring") \
 	X(tyrant_health,             4500.0f, 300.0f, 30000.0f, "tyrant", "the first Tyrant's health") \
 	X(tyrant_health_growth,      0.30f,  0.00f,   2.00f, "tyrant",    "each Tyrant after the first has this much more health than the one before (0.3 = +30 %)") \

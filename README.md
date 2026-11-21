@@ -75,7 +75,7 @@ The main menu has **play classic game** (the original, untouched) and **play enh
   colour: classic power-ups and cells are as before, special rounds are cartridges with a coloured tip (red drones,
   pale yellow runners, gold strikers, blue brutes), traps are round discs (flame, spears, drop), the bunker kit is a
   green dome with a white rim, healing plants are green.
-- **The Hive Tyrant.** After a long time in the game (8 minutes at first, then 7 to 8 minutes after each Tyrant is
+- **The Hive Tyrant.** After a long time in the game (5 minutes at first, then 7 to 8 minutes after each Tyrant is
   slain) the ground trembles for 15 seconds and a Hive Tyrant walks in from the next screen over: a huge crimson boss
   (4500 health, 30 % more for each one slain before it) with a boss bar at the top. The weakest bugs (drones, runners)
   run from it in terror and the hive sends fewer of them; strikers and brutes screen for it, standing between it and you
@@ -141,7 +141,7 @@ The main menu has **play classic game** (the original, untouched) and **play enh
   seconds, so it can never be chained. The bunker absorbs the shock.
 - **The hive adapts.** It watches how you play: standing still brings heavier bugs, running around brings fast
   swarms, throwing many bombs brings scattered swarms, low health brings runners; a short message tells you.
-- **The platform heals a little** when nothing has bitten for a while.
+- **The platform heals a little** when nothing has bitten for a while: 5 hit points a second after a second and a half without damage (15 a second with a south cell). Both the rate and the wait are knobs in `formido_tuning.cfg` (`platform_regen_ticks`, `platform_regen_delay_ticks`, `medbay_regen_ticks`, `medbay_regen_delay_ticks`).
 - Scores of the two games are kept in separate Hall of Fame lists (left/right switches in the Hall of Fame).
 
 ## Settings (menu: game settings)

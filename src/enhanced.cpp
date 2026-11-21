@@ -2158,7 +2158,7 @@ static void traps_draw_under(SDL_Surface *bmp) {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// The Hive Tyrant. After a long time in the game (8 minutes, then 7 to 8 minutes after each Tyrant is slain) the ground
+// The Hive Tyrant. After a long time in the game (5 minutes, then 7 to 8 minutes after each Tyrant is slain) the ground
 // trembles for 15 seconds and a Hive Tyrant emerges: an elite boss with one or two mutations. The weakest bugs (drones,
 // runners) run from it; the heavier ones screen for it. Killing it fully heals the player and gives the Tyrant's spoils
 // for 90 seconds; afterwards things settle, but every bug is a little tougher for good (hive_level).
@@ -2175,7 +2175,7 @@ static const char *MUT_NAME[NUM_MUTS] = { "brood-mother", "charger", "spitter", 
 #define TY_ACTIVE	2
 
 static int ty_phase = TY_WAITING;
-static long ty_next = 60 * 60 * 8;				// when the next one stirs
+static long ty_next = 60 * 60 * 5;				// when the next one stirs
 static int ty_warn = 0;
 static int ty_cycle = 0;
 static int ty_muts[2] = { 0, 0 };
@@ -3057,7 +3057,7 @@ void enhanced_update() {
 	if(player.ok && gx == 0 && gy == 0) {
 		float dx = (player.x - CELL_W / 2) / 100.0f, dy = (player.y - CELL_H / 2) / 112.0f;
 		bool medbay = mode_on() && mode == 3;
-		if(dx * dx + dy * dy < 1.0f && player.health < 200 && enhanced_ticks - last_damage_tick > (medbay ? 30 : 90)) {
+		if(dx * dx + dy * dy < 1.0f && player.health < 200 && enhanced_ticks - last_damage_tick > (long)(medbay ? tune.medbay_regen_delay_ticks : tune.platform_regen_delay_ticks)) {
 			if(++regen_acc >= (int)(medbay ? tune.medbay_regen_ticks : tune.platform_regen_ticks)) {
 				regen_acc = 0;
 				player.health++;
