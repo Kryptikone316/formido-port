@@ -99,6 +99,8 @@ static unsigned char *build_col(SDL_Surface *img) {
 				v = 1;
 			else if(r == 0 && g == 0 && b == 255)
 				v = 2;
+			else if(r == 255 && g == 0 && b == 0)
+				v = 3;			// thorns: walkable, they scratch
 			c[y * CELL_W + x] = v;
 		}
 	}
@@ -152,7 +154,16 @@ bool world_blocked(int x, int y, bool bullet) {
 	int lx = x - (cx - gx) * CELL_W;
 	int ly = y - (cy - gy) * CELL_H;
 	unsigned char v = scr[i].col[ly * CELL_W + lx];
-	return bullet ? (v == 1) : (v != 0);
+	return bullet ? (v == 1) : (v == 1 || v == 2);
+}
+
+// Thorns (the red plants' patches): can be walked through
+static bool world_thorns(int x, int y) {
+	int cx = gx + fdiv(x, CELL_W), cy = gy + fdiv(y, CELL_H);
+	int i = cell_index(cx, cy);
+	if(i < 0)
+		return false;
+	return scr[i].col[(y - (cy - gy) * CELL_H) * CELL_W + (x - (cx - gx) * CELL_W)] == 3;
 }
 
 void world_target(float x, float y, float *tx, float *ty) {
@@ -283,6 +294,8 @@ void critter_set_type(CRITTER *c, int type) {
 
 long enhanced_ticks = 0;
 static long last_damage_tick = 0;
+static int thorn_out = 100;			// ticks since the player last stood in thorns
+static long thorn_hit = 0;
 static int prev_health = 200;
 static int regen_acc = 0;
 
@@ -437,12 +450,12 @@ static bool spawn_point(float *ox, float *oy, bool *visible) {
 	for(int tries=0; tries<60; tries++) {
 		// the screens other than the one we are on weigh twice as much; a centre screen
 		// has no closed sides to climb out of, so nothing spawns in it while we stand there
-		int ci = RAND(0,4);
+		int ci = (RAND(0,4));
 		if(ci == here) {
-			if(here == 0 || RAND(0,2) != 0)
+			if(here == 0 || (RAND(0,2)) != 0)
 				continue;
 		}
-		int lx = RAND(70, CELL_W - 70), ly = RAND(70, CELL_H - 70);
+		int lx = (RAND(70, CELL_W - 70)), ly = (RAND(70, CELL_H - 70));
 		float x = (float)(lx + (CELL_GX[ci] - gx) * CELL_W);
 		float y = (float)(ly + (CELL_GY[ci] - gy) * CELL_H);
 		if(ci == here && !near_closed_side(ci, lx, ly))
@@ -469,7 +482,7 @@ void enhanced_spawn_event() {
 	int type = pick_type();
 	int n = 1;
 	if(type == CT_RUNNER)
-		n = RAND(3,5) + (adapt_bombs ? 2 : 0);
+		n = (RAND(3,5)) + (adapt_bombs ? 2 : 0);
 	float x, y;
 	bool visible;
 	if(!spawn_point(&x, &y, &visible))
@@ -485,7 +498,7 @@ void enhanced_spawn_event() {
 		critter_set_type(c, type);
 		if(visible) {
 			for(int k=0; k<6; k++)
-				add_particle(px, py, RANDF(-1.5, 1.5), RANDF(-2.0, 0.3), RAND(120,170), RAND(80,110), RAND(40,60), RAND(10,25));
+				add_particle(px, py, RANDF(-1.5, 1.5), RANDF(-2.0, 0.3), (RAND(120,170)), (RAND(80,110)), (RAND(40,60)), (RAND(10,25)));
 		}
 	}
 }
@@ -501,7 +514,7 @@ void enhanced_spawn_event() {
 //   west cell:  a slowing field around the platform
 // One mode at a time: a new cell switches it, the same cell again adds time.
 
-static const int ARM_COL[5][3] = { {0,0,0}, {90,160,255}, {255,165,60}, {100,230,120}, {205,120,255} };
+static const int ARM_COL[6][3] = { {0,0,0}, {90,160,255}, {255,165,60}, {100,230,120}, {205,120,255}, {120,235,120} };	// [5]: the healing plant
 static const char *MODE_NAME[5] = { "", "turret", "supply", "medbay", "field" };
 static const char *DIR_NAME[5] = { "", "north", "east", "south", "west" };
 static const int PYL_X[5] = { 0, 320, 478, 320, 160 };		// pylon centres on the centre screen
@@ -530,7 +543,7 @@ static int carrying = 0;			// arm of the cell the player carries, 0 for none
 static int mode = 0;				// arm of the cell that set the pylons' mode, 0 for none
 static long mode_until = 0;
 static SDL_Surface *cell_spr[5];	// the cell
-static SDL_Surface *glow_spr[5];	// soft light in the arm's colour
+static SDL_Surface *glow_spr[6];	// soft light in the arm's colour ([5]: the healing plant)
 
 #define MODE_SECONDS	120
 #define MODE_ADD_SECONDS 90
@@ -610,6 +623,7 @@ static void make_cell_sprites() {
 		cell_spr[i] = make_cell_sprite(i);
 		glow_spr[i] = make_glow_sprite(i);
 	}
+	glow_spr[5] = make_glow_sprite(5);
 }
 
 // somewhere deep in the arm, away from the open side, not inside rock, and not where it was last time
@@ -620,7 +634,7 @@ static void place_cell(int i) {
 	bool had_old = (old_x != 0 || old_y != 0);
 	bool found = false;
 	for(int tries=0; tries<120 && !found; tries++) {
-		int lx = RAND(LX0[i], LX1[i]), ly = RAND(LY0[i], LY1[i]);
+		int lx = (RAND(LX0[i], LX1[i])), ly = (RAND(LY0[i], LY1[i]));
 		if(had_old && tries < 100 && distance((float)lx, (float)ly, old_x, old_y) < 170)
 			continue;
 		int x = lx + (CELL_GX[i] - gx) * CELL_W, y = ly + (CELL_GY[i] - gy) * CELL_H;
@@ -735,13 +749,13 @@ static void turret_fire(float px, float py) {
 		return;
 	float ang = compute_angle(best->x, best->y, px, py);
 	best->health -= 25;
-	best->blood(RAND(2,5), ang);
+	best->blood((RAND(2,5)), ang);
 	if(best->health <= 0)
 		best->die(ang);
 	for(int k=1; k<=6; k++)
 		add_particle(px + (best->x - px) * k / 7.0f, py + (best->y - py) * k / 7.0f, 0, 0, 255, 235, 140, 4);
-	if(config.sound && RAND(0,2) == 0) {
-		int chan = Mix_PlayChannel(-1, snd_bullet[RAND(0,3)], 0);
+	if(config.sound && (RAND(0,2)) == 0) {
+		int chan = Mix_PlayChannel(-1, snd_bullet[(RAND(0,3))], 0);
 		int pan = (int)(px * 255 / SCREEN_W);
 		if(pan < 0) pan = 0;
 		if(pan > 255) pan = 255;
@@ -799,7 +813,7 @@ static void cells_update(int here) {
 			kills += 5;
 			float cx = pcell[i].lx + (CELL_GX[i] - gx) * CELL_W, cy = pcell[i].ly + (CELL_GY[i] - gy) * CELL_H;
 			for(int f=0; f<30; f++)
-				add_particle(cx, cy, RANDF(-2.5, 2.5), RANDF(-2.5, 2.5), ARM_COL[i][0], ARM_COL[i][1], ARM_COL[i][2], RAND(20,50));
+				add_particle(cx, cy, RANDF(-2.5, 2.5), RANDF(-2.5, 2.5), ARM_COL[i][0], ARM_COL[i][1], ARM_COL[i][2], (RAND(20,50)));
 		}
 	}
 
@@ -842,7 +856,7 @@ static void cells_update(int here) {
 				if(config.sound)
 					Mix_PlayChannel(-1, snd_mushroom, 0);
 				for(int f=0; f<24; f++)
-					add_particle(player.x, player.y, RANDF(-2.5, 2.5), RANDF(-2.5, 2.5), ARM_COL[mode][0], ARM_COL[mode][1], ARM_COL[mode][2], RAND(20,50));
+					add_particle(player.x, player.y, RANDF(-2.5, 2.5), RANDF(-2.5, 2.5), ARM_COL[mode][0], ARM_COL[mode][1], ARM_COL[mode][2], (RAND(20,50)));
 			}
 		}
 	}
@@ -859,14 +873,113 @@ static void cells_update(int here) {
 					free_items++;
 			if(free_items > 2)
 				create_power_up_at((int)(CELL_W / 2 + RANDF(-70, 70) + ox), (int)(CELL_H / 2 + RANDF(-50, 70) + oy),
-					RAND(0,1) ? POWER_UP_BOMB : POWER_UP_MINE, 60 * 14);
+					(RAND(0,1)) ? POWER_UP_BOMB : POWER_UP_MINE, 60 * 14);
 		}
-		if(RAND(0,19) == 0)
+		if((RAND(0,19)) == 0)
 			add_particle(PYL_X[mode] + ox + RANDF(-6, 6), PYL_Y[mode] + oy - 6, RANDF(-0.2, 0.2), RANDF(-0.7, -0.3),
-				ARM_COL[mode][0], ARM_COL[mode][1], ARM_COL[mode][2], RAND(25,45));
+				ARM_COL[mode][0], ARM_COL[mode][1], ARM_COL[mode][2], (RAND(25,45)));
 	}
 }
 
+
+///////////////////////////////////////////////////////////////////////////////
+// Healing plants: a rare green plant in the arms. Standing near it mends a little; it shrivels as it is used
+// (and as time passes) and then disappears.
+
+#define HEAL_POOL		40			// hit points it can give in all
+#define HEAL_LIFE		(60 * 70)	// ticks until it withers on its own
+#define HEAL_RADIUS		52
+#define MAX_HEAL_PLANTS	3
+
+struct HEAL_PLANT {
+	float x, y;
+	int pool;
+	int life;
+	bool ok;
+};
+static HEAL_PLANT hplant[MAX_HEAL_PLANTS];
+static int hplant_timer = 0;
+static bool hplant_ready = false;
+static int hplant_messages = 0;
+static SDL_Surface *hplant_img = NULL;		// four frames, 80 x 80 each
+
+static bool spawn_heal_plant(int here) {
+	int slot = -1;
+	for(int i=0; i<MAX_HEAL_PLANTS; i++) {
+		if(!hplant[i].ok) { slot = i; break; }
+	}
+	if(slot < 0)
+		return false;
+#ifdef FORMIDO_TESTHOOKS
+	if(getenv("FORMIDO_HEAL") && atoi(getenv("FORMIDO_HEAL")) == 2) {		// test: right next to the player
+		hplant[slot].x = player.x + 30;
+		hplant[slot].y = player.y + 10;
+		hplant[slot].pool = HEAL_POOL;
+		hplant[slot].life = HEAL_LIFE;
+		hplant[slot].ok = true;
+		return true;
+	}
+#endif
+	for(int tries=0; tries<60; tries++) {
+		int lx = (RAND(100, CELL_W - 100)), ly = (RAND(100, CELL_H - 100));
+		int x = lx + (CELL_GX[here] - gx) * CELL_W, y = ly + (CELL_GY[here] - gy) * CELL_H;
+		if(world_blocked(x, y, false) || world_blocked(x + 16, y, false) || world_blocked(x - 16, y, false) ||
+		   world_blocked(x, y + 16, false) || world_blocked(x, y - 16, false) || world_thorns(x, y))
+			continue;
+		if(distance((float)x, (float)y, player.x, player.y) < 110)
+			continue;
+		float cx = pcell[here].lx + (CELL_GX[here] - gx) * CELL_W, cy = pcell[here].ly + (CELL_GY[here] - gy) * CELL_H;
+		if(distance((float)x, (float)y, cx, cy) < 90)
+			continue;
+		hplant[slot].x = (float)x;
+		hplant[slot].y = (float)y;
+		hplant[slot].pool = HEAL_POOL;
+		hplant[slot].life = HEAL_LIFE;
+		hplant[slot].ok = true;
+		if(hplant_messages < 2) {
+			hplant_messages++;
+			set_message("a healing plant has bloomed nearby");
+		}
+		return true;
+	}
+	return false;
+}
+
+static void heal_plant_update(int here) {
+	if(!hplant_img)
+		return;
+	// the wait between plants runs on its own; once it is over, the next plant grows in the first arm the player
+	// is out in (a spot of open sand, away from rock, thorns and the power cell)
+	if(!hplant_ready && --hplant_timer <= 0)
+		hplant_ready = true;
+	if(hplant_ready && here > 0 && player.ok) {
+		bool already = false;
+		for(int i=0; i<MAX_HEAL_PLANTS; i++)
+			if(hplant[i].ok && cell_index(gx + fdiv((int)hplant[i].x, CELL_W), gy + fdiv((int)hplant[i].y, CELL_H)) == here)
+				already = true;
+		if(!already && spawn_heal_plant(here)) {
+			hplant_ready = false;
+			hplant_timer = 60 * (RAND(120, 200));		// a long wait before the next one: the pylon stays the reliable heal
+		}
+	}
+	for(int i=0; i<MAX_HEAL_PLANTS; i++) {
+		if(!hplant[i].ok)
+			continue;
+		if(--hplant[i].life <= 0 || hplant[i].pool <= 0) {
+			hplant[i].ok = false;
+			continue;
+		}
+		if(player.ok && player.health < 200 && distance(player.x, player.y, hplant[i].x, hplant[i].y) < HEAL_RADIUS) {
+			if(enhanced_ticks % 12 == 0) {
+				player.health++;
+				prev_health = player.health;
+				hplant[i].pool--;
+			}
+			if((RAND(0,7)) == 0)
+				add_particle(player.x + RANDF(-10, 10), player.y + RANDF(-6, 8), RANDF(-0.2, 0.2), RANDF(-0.9, -0.3), 110, 240, 120, (RAND(18,36)));
+		}
+	}
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 // Burrowers: hide in the sand of the arms (never the centre screen), creep towards the player under the surface,
@@ -899,7 +1012,7 @@ static int cell_of_critter(CRITTER *c) {
 
 static void dust_puff(float x, float y, int n, float spread) {
 	for(int k=0; k<n; k++)
-		add_particle(x + RANDF(-6, 6), y + RANDF(-4, 4), RANDF(-spread, spread), RANDF(-spread, spread * 0.3f), RAND(150,190), RAND(105,135), RAND(60,80), RAND(10,26));
+		add_particle(x + RANDF(-6, 6), y + RANDF(-4, 4), RANDF(-spread, spread), RANDF(-spread, spread * 0.3f), (RAND(150,190)), (RAND(105,135)), (RAND(60,80)), (RAND(10,26)));
 }
 
 bool enhanced_burrower_update(CRITTER *c) {
@@ -941,7 +1054,7 @@ bool enhanced_burrower_update(CRITTER *c) {
 			c->hidden = true;
 			if(!with_player) {
 				c->bstate = 0;
-				c->btimer = 60 * RAND(5, 9);
+				c->btimer = 60 * (RAND(5, 9));
 				return true;
 			}
 			float a = compute_angle(player.x, player.y, c->x, c->y);
@@ -983,7 +1096,7 @@ bool enhanced_burrower_update(CRITTER *c) {
 			if(!with_player || distance(c->x, c->y, player.x, player.y) > 560) {
 				c->bstate = 0;
 				c->hidden = true;
-				c->btimer = 60 * RAND(5, 9);
+				c->btimer = 60 * (RAND(5, 9));
 				dust_puff(c->x, c->y, 8, 1.5f);
 				c->health = c->maxhp;
 				return true;
@@ -1003,7 +1116,7 @@ static int burrowers_in_cell(int ci) {
 
 static void spawn_burrower(int ci) {
 	for(int tries=0; tries<60; tries++) {
-		int lx = RAND(80, CELL_W - 80), ly = RAND(80, CELL_H - 80);
+		int lx = (RAND(80, CELL_W - 80)), ly = (RAND(80, CELL_H - 80));
 		float x = (float)(lx + (CELL_GX[ci] - gx) * CELL_W), y = (float)(ly + (CELL_GY[ci] - gy) * CELL_H);
 		float d = distance(x, y, player.x, player.y);
 		if(d < 220 || d > 380)
@@ -1015,7 +1128,7 @@ static void spawn_burrower(int ci) {
 		critter_set_type(c, CT_BURROWER);
 		c->hidden = true;
 		c->bstate = 0;
-		c->btimer = 60 * RAND(2, 5);
+		c->btimer = 60 * (RAND(2, 5));
 		return;
 	}
 }
@@ -1025,7 +1138,7 @@ static void burrow_update(int here) {
 		return;
 	if(--burrow_timer > 0)
 		return;
-	burrow_timer = 60 * RAND(80, 140);							// few and far between
+	burrow_timer = 60 * (RAND(80, 140));							// few and far between
 	int allowed = (enhanced_ticks > 60 * 480) ? 2 : 1;
 	if(burrowers_in_cell(here) < allowed)
 		spawn_burrower(here);
@@ -1068,7 +1181,7 @@ void enhanced_ammo_hit(float x, float y) {
 	if(ammo_type < 0)
 		return;
 	for(int k=0; k<3; k++)
-		add_particle(x, y, RANDF(-1.8, 1.8), RANDF(-1.8, 1.8), AMMO_COL[ammo_type][0], AMMO_COL[ammo_type][1], AMMO_COL[ammo_type][2], RAND(6,12));
+		add_particle(x, y, RANDF(-1.8, 1.8), RANDF(-1.8, 1.8), AMMO_COL[ammo_type][0], AMMO_COL[ammo_type][1], AMMO_COL[ammo_type][2], (RAND(6,12)));
 }
 
 static SDL_Surface *make_ammo_sprite(int t) {
@@ -1106,7 +1219,7 @@ static void spawn_ammo_box(int here) {
 	if(slot < 0)
 		return;
 	for(int tries=0; tries<50; tries++) {
-		int lx = RAND(100, CELL_W - 100), ly = RAND(100, CELL_H - 100);
+		int lx = (RAND(100, CELL_W - 100)), ly = (RAND(100, CELL_H - 100));
 		int x = lx + (CELL_GX[here] - gx) * CELL_W, y = ly + (CELL_GY[here] - gy) * CELL_H;
 		if(world_blocked(x, y, false) || world_blocked(x + 16, y, false) || world_blocked(x - 16, y, false) ||
 		   world_blocked(x, y + 16, false) || world_blocked(x, y - 16, false))
@@ -1117,7 +1230,7 @@ static void spawn_ammo_box(int here) {
 		if(distance((float)x, (float)y, cx, cy) < 90)
 			continue;
 		int t;
-		do { t = RAND(0, NUM_AMMO - 1); } while(t == ammo_type);
+		do { t = (RAND(0, NUM_AMMO - 1)); } while(t == ammo_type);
 		abox[slot].x = (float)x;
 		abox[slot].y = (float)y;
 		abox[slot].type = t;
@@ -1137,7 +1250,7 @@ static void ammo_update(int here) {
 	}
 	if(here > 0 && player.ok) {
 		if(--ammo_timer <= 0) {
-			ammo_timer = 60 * RAND(32, 50);			// infrequent, and only while out in an arm
+			ammo_timer = 60 * (RAND(32, 50));			// infrequent, and only while out in an arm
 			bool already = false;
 			for(int i=0; i<MAX_AMMO_BOXES; i++) {
 				if(abox[i].ok && cell_index(gx + fdiv((int)abox[i].x, CELL_W), gy + fdiv((int)abox[i].y, CELL_H)) == here)
@@ -1217,7 +1330,7 @@ static void switch_cell(int ngx, int ngy) {
 // Per tick
 
 static int loot_type() {
-	int r = RAND(0,99);
+	int r = (RAND(0,99));
 	if(r < 30) return POWER_UP_HEALTH;
 	if(r < 58) return POWER_UP_BOMB;
 	if(r < 86) return POWER_UP_MINE;
@@ -1226,7 +1339,7 @@ static int loot_type() {
 
 static void spawn_arm_loot(int ci) {
 	for(int tries=0; tries<40; tries++) {
-		int lx = RAND(90, CELL_W - 90), ly = RAND(90, CELL_H - 90);
+		int lx = (RAND(90, CELL_W - 90)), ly = (RAND(90, CELL_H - 90));
 		int x = lx + (CELL_GX[ci] - gx) * CELL_W;
 		int y = ly + (CELL_GY[ci] - gy) * CELL_H;
 		if(world_blocked(x, y, false) || world_blocked(x + 14, y + 14, false) || world_blocked(x - 14, y - 14, false))
@@ -1238,6 +1351,10 @@ static void spawn_arm_loot(int ci) {
 
 void enhanced_update() {
 	enhanced_ticks++;
+#ifdef FORMIDO_TESTHOOKS
+	if(enhanced_ticks % 60 == 0 && getenv("FORMIDO_HPLOG"))
+		fprintf(stderr, "tick %ld hp %d at %d,%d thorn %d out %d cell %d,%d ok %d\n", enhanced_ticks, player.health, (int)player.x, (int)player.y, (int)world_thorns((int)player.x, (int)player.y), thorn_out, gx, gy, (int)player.ok);
+#endif
 
 	// 1. the player walks into the next screen
 	int pcx = gx + fdiv((int)player.x, CELL_W);
@@ -1258,15 +1375,34 @@ void enhanced_update() {
 				player.health++;
 				prev_health = player.health;
 			}
-			if(RAND(0,19) == 0)
-				add_particle(player.x + RANDF(-12, 12), player.y + RANDF(-4, 8), RANDF(-0.2, 0.2), RANDF(-0.8, -0.3), 80, 255, 120, RAND(25,50));
+			if((RAND(0,19)) == 0)
+				add_particle(player.x + RANDF(-12, 12), player.y + RANDF(-4, 8), RANDF(-0.2, 0.2), RANDF(-0.8, -0.3), 80, 255, 120, (RAND(25,50)));
 		}
+	}
+
+	// 2a. thorns: a scratch on touching them, and one now and then while standing in them
+	if(player.ok) {
+		int px = (int)player.x, py = (int)player.y;
+		bool in = world_thorns(px, py) || world_thorns(px + 9, py) || world_thorns(px - 9, py) ||
+			world_thorns(px, py + 9) || world_thorns(px, py - 9);
+		if(in) {
+			if((thorn_out >= 30 || enhanced_ticks - thorn_hit >= 25) && player.health > 2) {
+				player.health -= 1;
+				thorn_hit = enhanced_ticks;
+				for(int k=0; k<3; k++)
+					add_particle(player.x + RANDF(-8, 8), player.y + RANDF(-6, 6), RANDF(-0.6, 0.6), RANDF(-0.9, 0.1), 190, 40, 40, (RAND(8,16)));
+			}
+			thorn_out = 0;
+		}
+		else if(thorn_out < 1000)
+			thorn_out++;
 	}
 
 	// 2b. power cells and what the pylons do
 	cells_update(cell_index(gx, gy));
 	ammo_update(cell_index(gx, gy));
 	burrow_update(cell_index(gx, gy));
+	heal_plant_update(cell_index(gx, gy));
 
 	// 3. the hive watches
 	if(enhanced_ticks % 60 == 0)
@@ -1332,9 +1468,20 @@ void enhanced_begin() {
 		abox[i].ok = false;
 	ammo_type = -1;
 	ammo_left = 0;
-	ammo_timer = 60 * RAND(32, 50);
-	burrow_timer = 60 * RAND(40, 80);
+	ammo_timer = 60 * (RAND(32, 50));
+	burrow_timer = 60 * (RAND(40, 80));
 	rumble_messages = 0;
+	if(!hplant_img) {
+		SDL_Surface *img = IMG_Load(DAT("plant_green.dat"));
+		hplant_img = img;			// without the picture the plants simply do not appear
+	}
+	for(int i=0; i<MAX_HEAL_PLANTS; i++)
+		hplant[i].ok = false;
+	hplant_timer = 60 * (RAND(70, 130));
+	hplant_ready = false;
+	hplant_messages = 0;
+	thorn_out = 100;
+	thorn_hit = 0;
 	for(int i=0; i<5; i++) {
 		need_guards[i] = (i > 0);
 		sealed[i] = (i > 0);
@@ -1350,6 +1497,23 @@ void enhanced_begin() {
 #ifdef FORMIDO_TESTHOOKS
 	for(int i=1; i<5; i++)
 		fprintf(stderr, "power cell %s at %d,%d\n", DIR_NAME[i], (int)pcell[i].lx, (int)pcell[i].ly);
+	fprintf(stderr, "timers (ticks): ammo %d, burrower %d, healing plant %d\n", ammo_timer, burrow_timer, hplant_timer);
+	if(getenv("FORMIDO_ONTHORN") && getenv("FORMIDO_WARP")) {		// stand in the arm's first thorn patch
+		int w = atoi(getenv("FORMIDO_WARP"));
+		for(int k=0; k<CELL_W*CELL_H; k++) {
+			if(w >= 1 && w <= 4 && scr[w].col[k] == 3) {
+				player.x = (float)(k % CELL_W + (CELL_GX[w] - gx) * CELL_W);
+				player.y = (float)(k / CELL_W + (CELL_GY[w] - gy) * CELL_H);
+				player.sx = player.x;
+				player.sy = player.y;
+				break;
+			}
+		}
+	}
+	if(getenv("FORMIDO_HEAL"))			// a healing plant soon
+		hplant_timer = 1;
+	if(getenv("FORMIDO_HURT"))			// start hurt
+		player.health = atoi(getenv("FORMIDO_HURT"));
 	if(getenv("FORMIDO_BURROW"))		// a burrower soon, in whichever arm the player is in
 		burrow_timer = 60;
 	if(getenv("FORMIDO_NOGUARD"))		// no guardians (to watch other things in an arm)
@@ -1435,6 +1599,23 @@ static void draw_world_overlays(SDL_Surface *bmp) {
 				rect(bmp, x, y, 2, 2, ARM_COL[4][0], ARM_COL[4][1], ARM_COL[4][2]);
 			}
 		}
+	}
+
+	// healing plants: green and bright while there is plenty left, then yellowing, browning, withered
+	for(int i=0; i<MAX_HEAL_PLANTS; i++) {
+		if(!hplant[i].ok || !hplant_img)
+			continue;
+		float frac = (float)hplant[i].pool / HEAL_POOL;
+		float lf = (float)hplant[i].life / HEAL_LIFE;
+		if(lf < frac)
+			frac = lf;
+		int frame = frac > 0.66f ? 0 : (frac > 0.33f ? 1 : (frac > 0.12f ? 2 : 3));
+		if(frame <= 1)
+			blit_center(bmp, glow_spr[5], (int)hplant[i].x, (int)hplant[i].y - 14);
+		SDL_Rect src, dst;
+		src.x = frame * 80; src.y = 0; src.w = 80; src.h = 80;
+		dst.x = (int)hplant[i].x - 40; dst.y = (int)hplant[i].y - 62; dst.w = 80; dst.h = 80;
+		SDL_BlitSurface(hplant_img, &src, bmp, &dst);
 	}
 
 	// special ammunition lying about

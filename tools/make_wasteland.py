@@ -3,7 +3,7 @@
 
 Output (into the given folder, 640x480 PNG files with a .dat name, like the game's own data):
     waste_n.dat waste_e.dat waste_s.dat waste_w.dat      pictures
-    waste_n_col.dat ...                                    collision maps (white = solid, magenta = free)
+    waste_n_col.dat ...                                    collision maps (white = solid, red = thorns, magenta = free)
 
 How the pictures are made, in the spirit of the concept art (rough pebbled sand, dark warm-brown rock, red alien plants,
 dust in the air):
@@ -109,14 +109,14 @@ def raster(poly):
     return np.asarray(img) > 0
 
 
-def draw_plant(draw, rng, cx, cy, size):
+def draw_plant(draw, rng, cx, cy, size, stalk=(104, 46, 30), petal=lambda c: (int(c * 1.15), int(c * 0.2), int(c * 0.13))):
     """A red spiky alien flower: stalks ending in a burst of long, curled petals."""
     S = size
     for _ in range(int(rng.integers(1, 3))):
         bx, by = cx + rng.normal(0, S * 0.25), cy + rng.normal(0, S * 0.25)
         tx, ty = bx + rng.normal(0, S * 0.3), by - S * (0.5 + 0.5 * rng.random())
         pts = [(bx + (tx - bx) * t + np.sin(t * 3) * 3, by + (ty - by) * t) for t in np.linspace(0, 1, 8)]
-        draw.line(pts, fill=(104, 46, 30, 255), width=max(2, int(S * 0.09)))
+        draw.line(pts, fill=stalk + (255,), width=max(2, int(S * 0.09)))
         n = int(rng.integers(6, 10))
         for k in range(n):
             a = -np.pi / 2 + (k - (n - 1) / 2) * (np.pi * 1.3 / n) + rng.normal(0, 0.12)
@@ -127,7 +127,7 @@ def draw_plant(draw, rng, cx, cy, size):
                 a2 = a + curl * step / 9.0
                 nx, ny = px + np.cos(a2) * ln / 9, py + np.sin(a2) * ln / 9 + step * 0.3
                 c = 150 + 70 * (step / 9.0)
-                draw.line([(px, py), (nx, ny)], fill=(int(c * 1.15), int(c * 0.2), int(c * 0.13), 255),
+                draw.line([(px, py), (nx, ny)], fill=petal(c) + (255,),
                           width=max(1, int(S * 0.11 * (1 - step / 10.0))))
                 px, py = nx, ny
 
@@ -271,13 +271,14 @@ def make_arm(name, sand, seed):
         for _ in range(int(rng.integers(0, 3))):
             a = rng.random() * 2 * np.pi
             spots.append((cx + np.cos(a) * (r + 24), cy + np.sin(a) * (r + 18)))
-    for _ in range(int(rng.integers(4, 8))):
+    for _ in range(int(rng.integers(9, 14))):
         spots.append((float(rng.integers(50, W - 50)), float(rng.integers(60, H - 40))))
+    dts = ndi.distance_transform_edt(~solid)
     for sx, sy in spots:
         sx, sy = min(max(sx, 40), W - 40), min(max(sy, 50), H - 24)
-        if crag[int(sy), int(sx)] or cliff[int(sy), int(sx)]:
-            continue
         sz = float(rng.integers(20, 32))
+        if dts[int(sy), int(sx)] < sz * 1.3 + 4:		# a plant never overlaps or leans on solid rock
+            continue
         draw_plant(ImageDraw.Draw(pshade), rng, (sx + 6) * 2, (sy + 4) * 2, sz * 2)
         draw_plant(ImageDraw.Draw(plants), rng, sx * 2, sy * 2, sz * 2)
     shd = np.asarray(pshade.resize((W, H), Image.LANCZOS))[..., 3].astype(np.float32) / 255.0
@@ -285,6 +286,7 @@ def make_arm(name, sand, seed):
     pl = np.asarray(plants.resize((W, H), Image.LANCZOS)).astype(np.float32)
     a = pl[..., 3:4] / 255.0
     col = col * (1 - a) + pl[..., :3] * a
+    thorn = ndi.binary_dilation(a[..., 0] > 0.3, iterations=4) & ~solid
 
     # 6c. dust
     haze = np.clip(ndi.gaussian_filter(fbm(rng, (H, W), (200, 100), (1.0, 0.6)), 10) * 1.4 + 0.2, 0, 0.4)
@@ -296,6 +298,7 @@ def make_arm(name, sand, seed):
     img = Image.fromarray(col.astype(np.uint8), "RGB")
     colmap = np.zeros((H, W, 3), np.uint8)
     colmap[:] = (255, 0, 255)
+    colmap[thorn] = (255, 0, 0)			# thorns: walkable, a scratch now and then
     colmap[solid] = (255, 255, 255)
     return img, Image.fromarray(colmap, "RGB"), solid
 

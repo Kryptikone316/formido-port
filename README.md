@@ -60,6 +60,12 @@ The main menu has **play classic game** (the original, untouched) and **play enh
   little less to the others. Each load is 160 rounds and spoils after 45 seconds, whichever comes first; then you shoot
   normally again. The hive notices what you fire: the longer you use one kind, the fewer of its rank it sends, with a
   message when it adapts.
+- **Red plants are thorns.** They stand on open sand, clear of rock. You can walk straight through a patch: touching one
+  costs 1 hit point, and standing in it costs about 1 every 25 ticks (a scratch, nothing more).
+- **Healing plants.** A rare green plant grows in the arms (never on the platform screen): standing within about 50
+  pixels mends you at 5 hit points a second, up to 40 in all, and it yellows, browns and withers as it is used (or after
+  70 seconds), then disappears. The wait before the next one is 2 to 3.5 minutes, so the platform stays the reliable way
+  to heal.
 - **Bug ranks.** Drone (the classic bug), runner (small, fast, in packs), striker (tough, hits harder), brute (huge,
   slow). They are the classic bug's pictures scaled and recoloured. They appear as the match goes on.
 - **Burrowers.** A fifth rank that lives under the sand of the arms (never in the centre screen, never near the
