@@ -80,7 +80,11 @@ void load_menus() {
 	SDL_FreeSurface(tmp);
 
 	if(!screen->format->palette)
+#ifdef SF3500
+		tmp = IMG_Load(DAT("menu2_sf.dat"));	// the settings panel without its painted key labels
+#else
 		tmp = IMG_Load(DAT("menu2.dat"));
+#endif
 	else
 		tmp = IMG_Load(DAT("menu2_8bit.dat"));
 	if(tmp == NULL)
@@ -310,13 +314,16 @@ int show_menu(int menu_id) {
 
 					// Keys
 #ifdef SF3500
-					// The gamepad has one fixed layout (set by the glue): the key rows only show it.
-					case MENU_KEY_FORWARD:
-					case MENU_KEY_BACKWARD:
-					case MENU_KEY_LEFT:
-					case MENU_KEY_RIGHT:
-					case MENU_KEY_SHOOT:
-					case MENU_KEY_SPECIAL:
+					// Settings rows that are switched with the select button
+					case MENU_OPT_CONTROLS:
+						config.controls = !config.controls;
+						break;
+					case MENU_OPT_FPS:
+						config.fps_cap = (config.fps_cap == 20) ? 30 : (config.fps_cap == 30) ? 60 : 20;
+						sf3500_set_frame_cap(config.fps_cap);
+						break;
+					case MENU_OPT_CREDITS:
+						config.credits = !config.credits;
 						break;
 #else
 					case MENU_KEY_FORWARD:
@@ -360,6 +367,30 @@ int show_menu(int menu_id) {
 				}
 			}
 
+#ifdef SF3500
+			// Left/right change the option rows too (select cycles forward)
+			if(menu_id == MENU_ID_SETTINGS && (key[SDLK_LEFT] || key[SDLK_RIGHT])) {
+				int dir = key[SDLK_RIGHT] ? 1 : -1;
+				if(menu_item == MENU_OPT_CONTROLS || menu_item == MENU_OPT_CREDITS) {
+					if(menu_item == MENU_OPT_CONTROLS)
+						config.controls = !config.controls;
+					else
+						config.credits = !config.credits;
+					if(config.sound)
+						Mix_PlayChannel(-1, snd_menu[0], 0);
+				}
+				else if(menu_item == MENU_OPT_FPS) {
+					static const int caps[3] = { 20, 30, 60 };
+					int i = (config.fps_cap == 20) ? 0 : (config.fps_cap == 30) ? 1 : 2;
+					i = (i + dir + 3) % 3;
+					config.fps_cap = caps[i];
+					sf3500_set_frame_cap(config.fps_cap);
+					if(config.sound)
+						Mix_PlayChannel(-1, snd_menu[0], 0);
+				}
+			}
+#endif
+
 			// Check for slider
 			if(menu_item == MENU_MUS_VOLUME) {
 				if(key[SDLK_LEFT]) {
@@ -396,11 +427,16 @@ int show_menu(int menu_id) {
 		}
 		else if(menu_id == MENU_ID_SETTINGS) {
 			ax = 288;
+#ifdef SF3500
+			static const int row_y[5] = { 190, 238, 286, 346, 424 };	// controls, frame limit, credits, volume, accept
+			ay = row_y[menu_item - MENU_OPT_CONTROLS] - 4;
+#else
 			ay = 170 + (menu_item - MENU_KEY_FORWARD) * 35;
 			if(menu_item == MENU_MUS_VOLUME)
 				ay = 401;
 			else if(menu_item == MENU_ACCEPT)
 				ay = 429;
+#endif
 		}
 
 		// Draw the menu arrow
@@ -417,6 +453,41 @@ int show_menu(int menu_id) {
 		}
 
 		if(menu_id == MENU_ID_SETTINGS) {
+#ifdef SF3500
+			// Rows drawn with the game's own handwriting fonts on the cleaned panel
+			static const int row_y[5] = { 190, 238, 286, 346, 424 };
+			font_write(screen, FONT_NORMAL2, 322, 150, "game settings");
+
+			font_write(screen, (menu_item == MENU_OPT_CONTROLS) ? FONT_NORMAL2 : FONT_NORMAL, 322, row_y[0], "controls");
+			font_write(screen, (menu_item == MENU_OPT_CONTROLS) ? FONT_NORMAL2 : FONT_NORMAL, 490, row_y[0], (char *)(config.controls ? "twin stick" : "classic"));
+			font_write(screen, FONT_NORMAL, 322, row_y[0]+19, (char *)(config.controls ? "L1 + A B X Y aim and fire" : "left/right turn, A fires"));
+
+			char buf[32];
+			sprintf(buf, "%d fps", config.fps_cap);
+			font_write(screen, (menu_item == MENU_OPT_FPS) ? FONT_NORMAL2 : FONT_NORMAL, 322, row_y[1], "frame limit");
+			font_write(screen, (menu_item == MENU_OPT_FPS) ? FONT_NORMAL2 : FONT_NORMAL, 490, row_y[1], buf);
+			font_write(screen, FONT_NORMAL, 322, row_y[1]+19, "20 for slower devices");
+
+			font_write(screen, (menu_item == MENU_OPT_CREDITS) ? FONT_NORMAL2 : FONT_NORMAL, 322, row_y[2], "credits on exit");
+			font_write(screen, (menu_item == MENU_OPT_CREDITS) ? FONT_NORMAL2 : FONT_NORMAL, 490, row_y[2], (char *)(config.credits ? "on" : "off"));
+			font_write(screen, FONT_NORMAL, 322, row_y[2]+19, "select+start leaves now");
+
+			font_write(screen, (menu_item == MENU_MUS_VOLUME) ? FONT_NORMAL2 : FONT_NORMAL, 322, row_y[3]-18, "music volume");
+			font_write(screen, (menu_item == MENU_ACCEPT) ? FONT_NORMAL2 : FONT_NORMAL, 322, row_y[4], "accept settings");
+			{
+				// The volume slider
+				float vol = config.music_vol / 128.0;
+				int bw = energy_bar[0]->w;
+				for(int i=0; i<15; i++) {
+					SDL_Rect r;
+					r.x = 322+i*bw;
+					r.y = row_y[3]+4;
+					r.w = bw;
+					r.h = energy_bar[0]->h;
+					SDL_BlitSurface(((float)i/15.0 >= vol) ? energy_bar[1] : energy_bar[0], NULL, screen, &r);
+				}
+			}
+#else
 			// Draw the music volume slider
 			float vol = config.music_vol / 128.0;
 			for(int i=0; i<15; i++) {
@@ -441,7 +512,7 @@ int show_menu(int menu_id) {
 			font_write(screen, (menu_item == MENU_KEY_SHOOT) ? FONT_NORMAL2 : FONT_NORMAL, 425, 315, key_name(config.key_shoot));
 			// Special
 			font_write(screen, (menu_item == MENU_KEY_SPECIAL) ? FONT_NORMAL2 : FONT_NORMAL, 426, 348, key_name(config.key_special));
-
+#endif
 		}
 
 		// Draw the hall of fame

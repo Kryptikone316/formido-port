@@ -87,6 +87,7 @@ void init_sdl() {
 	// SDL has no audio device on this handheld: video and timers only, sound goes through
 	// the glue's own mixer (see Mix_OpenAudio below).
 	sf3500_init();
+	sf3500_set_frame_cap(config.fps_cap);
 	if(SDL_Init(SDL_INIT_VIDEO|SDL_INIT_TIMER) < 0)
 		error_msg("Unable to init SDL: %s", SDL_GetError());
 #else

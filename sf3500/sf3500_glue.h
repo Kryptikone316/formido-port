@@ -27,6 +27,13 @@ int sf3500_poll(SDL_Event *e);
  * the B and Start buttons do. */
 void sf3500_set_in_game(int in_game);
 
+/* Frame limit: never present more than this many frames a second (20, 30 or 60). The game logic keeps
+ * its own 60 Hz timer, so a lower limit only makes the picture less smooth, not the game slower. */
+void sf3500_set_frame_cap(int fps);
+
+/* Select + Start was pressed: the player wants out at once (no credits). */
+int sf3500_quit_requested(void);
+
 /* Which control scheme a match uses (1 = twin-stick, 0 = the original tank controls). */
 void sf3500_set_twin_stick(int on);
 

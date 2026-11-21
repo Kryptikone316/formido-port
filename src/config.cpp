@@ -55,8 +55,15 @@ void load_config(char *file, CONFIG *conf) {
 	fscanf(f, "key_shoot = %d\n", &(conf->key_shoot));
 	fscanf(f, "key_special = %d\n", &(conf->key_special));
 #ifdef SF3500
-	conf->controls = 1;	// default when the file has no such line (older saves)
+	// defaults for files without these lines (older saves)
+	conf->controls = 1;
+	conf->fps_cap = 30;
+	conf->credits = 1;
 	fscanf(f, "controls = %d\n", &(conf->controls));
+	fscanf(f, "frame_limit = %d\n", &(conf->fps_cap));
+	fscanf(f, "credits_on_exit = %d\n", &(conf->credits));
+	if(conf->fps_cap != 20 && conf->fps_cap != 30 && conf->fps_cap != 60)
+		conf->fps_cap = 30;
 #endif
 	fclose(f);
 
@@ -103,6 +110,8 @@ void save_config(char *file, CONFIG *conf) {
 	fprintf(f, "key_special = %d\n", (conf->key_special));
 #ifdef SF3500
 	fprintf(f, "controls = %d\n", (conf->controls));
+	fprintf(f, "frame_limit = %d\n", (conf->fps_cap));
+	fprintf(f, "credits_on_exit = %d\n", (conf->credits));
 #endif
 
 	fclose(f);

@@ -323,7 +323,13 @@ int main(int argc, char *argv[]) {
 	}
 
 	// Show the credits
+#ifdef SF3500
+	// Select + Start always leaves at once; otherwise the setting decides
+	if(config.credits && !sf3500_quit_requested())
+		show_credits();
+#else
 	show_credits();
+#endif
 
 	// Destroy timer
 	kill_timer();

@@ -42,6 +42,8 @@ struct CONFIG {
 	int key_special;
 	// Datafrog SF3500: 1 = twin-stick style (D-pad walks, face buttons aim and fire), 0 = original tank controls
 	int controls;
+	int fps_cap;			// Frame limit: 20, 30 or 60
+	int credits;			// Show the credits when the game is left through the menu (1) or not (0)
 };
 
 // Load config from file

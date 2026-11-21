@@ -496,6 +496,15 @@ static int g_frame_ms = 33; /* never present faster than ~30 fps: steadier pictu
 void sf3500_set_in_game(int in_game) { g_in_game = in_game; }
 void sf3500_set_twin_stick(int on) { g_twin = on != 0; }
 
+static bool g_cap_from_env = false;
+void sf3500_set_frame_cap(int fps)
+{
+    if (g_cap_from_env) return; /* FORMIDO_FRAME_MS (test builds and experiments) wins */
+    if (fps < 10) fps = 30;
+    if (fps > 60) fps = 60;
+    g_frame_ms = 1000 / fps;
+}
+
 #ifdef FORMIDO_TESTHOOKS
 static void test_shot(SDL_Surface *s);
 #endif
@@ -572,6 +581,7 @@ static void push_key(SDLKey sym, bool down)
 static bool g_down[sizeof(g_map) / sizeof(g_map[0])];
 static long long g_next_repeat[sizeof(g_map) / sizeof(g_map[0])];
 static bool g_quit_pending = false;
+int sf3500_quit_requested(void) { return g_quit_pending ? 1 : 0; }
 static long long g_last_quit_ms = 0;
 
 /* Twin-stick face buttons. Each press takes its role when it starts: with L1 held it is an aim button
@@ -723,7 +733,7 @@ void sf3500_init(void)
     setenv("SDL_VIDEODRIVER", "dummy", 1);
     setenv("SDL_NOMOUSE", "1", 1);
     const char *fc = getenv("FORMIDO_FRAME_MS");
-    if (fc && atoi(fc) >= 0) g_frame_ms = atoi(fc);
+    if (fc && atoi(fc) >= 0) { g_frame_ms = atoi(fc); g_cap_from_env = true; }
 
     g_hw = (hwdisp_init() == 0);
     if (!g_hw) fprintf(stderr, "formido: display driver not available, nothing will be shown\n");

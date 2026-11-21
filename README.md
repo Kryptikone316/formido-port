@@ -33,6 +33,15 @@ High-score name: Up/Down change the letter, Right takes it, Left or B steps back
 Note: the sprite's gun hangs 60 degrees left of the body and bullets leave along `angle - 60`; twin-stick mode keeps a
 separate `aim` and sets `angle = aim + 60`, so the picture and the bullets agree.
 
+## Settings (menu: game settings)
+
+Controls (twin stick / classic tank), frame limit (20, 30 or 60 fps; the game logic keeps its own 60 Hz timer, so a
+lower limit only makes the picture less smooth), credits on exit (on / off) and music volume. Left/right or the
+select button change a row. They are saved in `.formido/formido.cfg` as `controls`, `frame_limit` and
+`credits_on_exit`. Select + Start always leaves at once, without the credits. The settings panel uses
+`data/menu2_sf.dat`, made from the upstream `menu2.dat` by `tools/make_menu_clean.py` (the painted key labels are
+removed and the rows drawn with the game's own font).
+
 ## Build
 
     ./build_sf3500.sh            # formido.stripped.mipsel (release)
