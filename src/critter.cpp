@@ -36,6 +36,7 @@
 #include "mymath.h"
 #include "game.h"
 #include "player.h"
+#include "enhanced.h"
 
 // Critter graphics
 SDL_Surface *critter_gfx[3][35];
@@ -332,7 +333,21 @@ void CRITTER::move() {
 		return;
 
 	// Head for the player
+#ifdef SF3500
+	float walk_accel = 0.25f;
+	int bite = 1;
+	if(enhanced) {
+		float tx, ty;
+		world_target(x, y, &tx, &ty);
+		angle = compute_angle(tx,ty,x,y);
+		walk_accel = ctype_stats[type].accel * enhanced_bug_speed(x, y);
+		bite = ctype_stats[type].dmg;
+	}
+	else
+		angle = compute_angle(player.x,player.y,x,y);
+#else
 	angle = compute_angle(player.x,player.y,x,y);
+#endif
 
 	// Move to player (and check collisions)
 	//////
@@ -342,7 +357,11 @@ void CRITTER::move() {
 
 	// Move
 	float dx,dy;
+#ifdef SF3500
+	move_xy(walk_accel, angle, &dx, &dy);
+#else
 	move_xy(0.25, angle, &dx, &dy);
+#endif
 
 	dirx += dx;
 	diry += dy;
@@ -371,7 +390,11 @@ void CRITTER::move() {
 
 	// Attack if near player
 	//if(distance(player.x, player.y, x,y) < 27) {
+#ifdef SF3500
+	if(rects_collide(x-hs, y-hs, 2*hs,2*hs, player.x-20, player.y-20, 40,40)) {
+#else
 	if(rects_collide(x-16, y-16, 32,32, player.x-20, player.y-20, 40,40)) {
+#endif
 		player.blood(RAND(1,2), add_angle(angle, RANDF(-5,5)));
 
 		x = sx;
@@ -380,10 +403,17 @@ void CRITTER::move() {
 		// Player shouts
 		player.shout();
 
+#ifdef SF3500
+		if(player.drugs == 0)
+			player.health -= bite;
+		else if(player.drugs && RAND(0,100) >= 50)
+			player.health -= bite;
+#else
 		if(player.drugs == 0)
 			player.health--;
 		else if(player.drugs && RAND(0,100) >= 50)
 			player.health--;
+#endif
 
 		if(player.health <= 0)
 			player.die();
@@ -425,7 +455,11 @@ void CRITTER::die(float bul_angle) {
 
 	remove = true;
 
+#ifdef SF3500
+	kills += enhanced ? ctype_stats[type].score : 1;
+#else
 	kills++;
+#endif
 
 	// Play sound
 	if(config.sound) {
@@ -476,7 +510,31 @@ void CRITTER::draw(SDL_Surface *bmp) {
 	rect.w = 64;
 	rect.h = 64;
 
+#ifdef SF3500
+	SDL_Surface *spr = critter_gfx[f][a];
+	if(enhanced && type > 0 && ctype_gfx[type][f][a])
+		spr = ctype_gfx[type][f][a];
+	rect.x = (int)x - spr->w/2;
+	rect.y = (int)y - spr->h/2;
+	rect.w = spr->w;
+	rect.h = spr->h;
+	SDL_BlitSurface(spr, NULL, bmp, &rect);
+
+	// A health bar on the tough ranks once they are hurt
+	if(enhanced && type >= CT_STRIKER && health < maxhp && health > 0) {
+		SDL_Rect bar;
+		int w = spr->w * 2 / 3;
+		bar.x = (int)x - w/2;
+		bar.y = (int)y - spr->h/2 - 4;
+		bar.w = w;
+		bar.h = 3;
+		SDL_FillRect(bmp, &bar, SDL_MapRGB(bmp->format, 40, 10, 10));
+		bar.w = w * health / maxhp;
+		SDL_FillRect(bmp, &bar, SDL_MapRGB(bmp->format, 220, 60, 40));
+	}
+#else
 	SDL_BlitSurface(critter_gfx[f][a], NULL, bmp, &rect); 
+#endif
 }
 
 
@@ -489,6 +547,9 @@ void CRITTER::clear() {
 
 	angle = 0;
 	health = 100;
+	type = 0;
+	maxhp = 100;
+	hs = 16;
 	ok = true;
 	remove = false;
 	frame = 0;
@@ -703,3 +764,21 @@ GIB::~GIB() {
 		delete next;
 }
 
+
+
+#ifdef SF3500
+// The enhanced game moves everything by a whole screen when the player changes screen
+void shift_critters(float dx, float dy) {
+	for(CRITTER *c = critter_first; c; c = c->next) {
+		c->x += dx;  c->y += dy;
+		c->sx += dx; c->sy += dy;
+	}
+}
+
+void shift_gibs(float dx, float dy) {
+	for(GIB *g = gib_first; g; g = g->next) {
+		g->x += dx;
+		g->y += dy;
+	}
+}
+#endif

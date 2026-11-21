@@ -68,7 +68,11 @@ void load_menus() {
 	// Load the backgrounds
 	SDL_Surface *tmp;
 	if(!screen->format->palette)
+#ifdef SF3500
+		tmp = IMG_Load(DAT("menu_sf.dat"));		// the main menu without its painted entries
+#else
 		tmp = IMG_Load(DAT("menu.dat"));
+#endif
 	else
 		tmp = IMG_Load(DAT("menu_8bit.dat"));
 	if(tmp == NULL)
@@ -106,6 +110,10 @@ void load_menus() {
 		error_msg("Unable to load menus!\n%s", IMG_GetError());
 
 	SDL_FreeSurface(tmp);
+
+#ifdef SF3500
+	load_big_font();
+#endif
 
 	// Load the menu arrow
 	tmp = IMG_Load(DAT("menu_arrow.dat"));
@@ -174,6 +182,11 @@ int show_menu(int menu_id) {
 	// Initialize
 	HISCORE_LIST list;
 	list.load(HISCORE("hiscore.dat"));
+#ifdef SF3500
+	HISCORE_LIST list_e;
+	list_e.load(HISCORE("hiscore_enh.dat"));
+	int hof_page = 0;		// 0 classic, 1 enhanced
+#endif
 
 	int action = 0;
 	menu_item = 0;
@@ -282,6 +295,9 @@ int show_menu(int menu_id) {
 				switch(menu_item) {
 					// Main menu
 					case MENU_NEW_GAME:
+#ifdef SF3500
+					case MENU_NEW_ENHANCED:
+#endif
 						action = menu_item;
 						menu_loop = false;
 						break;
@@ -391,6 +407,15 @@ int show_menu(int menu_id) {
 			}
 #endif
 
+#ifdef SF3500
+			// The Hall of Fame has a list for each game: left/right switch
+			if(menu_id == MENU_ID_HALL_OF_FAME && (key[SDLK_LEFT] || key[SDLK_RIGHT])) {
+				hof_page = !hof_page;
+				if(config.sound)
+					Mix_PlayChannel(-1, snd_menu[0], 0);
+			}
+#endif
+
 			// Check for slider
 			if(menu_item == MENU_MUS_VOLUME) {
 				if(key[SDLK_LEFT]) {
@@ -451,6 +476,15 @@ int show_menu(int menu_id) {
 			if(SDL_MUSTLOCK(screen))
 				SDL_UnlockSurface(screen);
 		}
+
+#ifdef SF3500
+		if(menu_id == MENU_ID_MAIN) {
+			static char *labels[5] = { (char *)"play classic game", (char *)"play enhanced game", (char *)"hall of fame",
+				(char *)"game settings", (char *)"enough already" };
+			for(int i=0; i<5; i++)
+				font_write_big(screen, (i == menu_item) ? 1 : 0, 56, 240 + i * 37, labels[i]);
+		}
+#endif
 
 		if(menu_id == MENU_ID_SETTINGS) {
 #ifdef SF3500
@@ -517,7 +551,14 @@ int show_menu(int menu_id) {
 
 		// Draw the hall of fame
 		if(menu_id == MENU_ID_HALL_OF_FAME) {
+#ifdef SF3500
+			(hof_page ? list_e : list).draw(screen, 10, 10, -1);
+			char *t = (char *)(hof_page ? "< enhanced game >" : "< classic game >");
+			font_write(screen, FONT_NORMAL, 360, 192, (char *)"left or right changes the list");
+			font_write(screen, FONT_NORMAL2, 360, 170, t);
+#else
 			list.draw(screen, 10, 10, -1);
+#endif
 		}
 
 		// Flip to screen

@@ -1,4 +1,4 @@
 obj-sf3500*/
 *.mipsel
-run/
+run*/
 package/

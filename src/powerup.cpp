@@ -32,6 +32,7 @@
 #include "init.h"
 #include "blend.h"
 #include "particle.h"
+#include "enhanced.h"
 
 // Power-up array
 POWER_UP power_up[MAX_POWER_UPS];
@@ -341,3 +342,28 @@ void POWER_UP::clear() {
 	life = 0;
 }
 
+#ifdef SF3500
+void shift_power_ups(float dx, float dy) {
+	for(int f=0; f<MAX_POWER_UPS; f++) {
+		if(power_up[f].ok) {
+			power_up[f].x += (int)dx;
+			power_up[f].y += (int)dy;
+		}
+	}
+}
+
+// A power-up the world puts down (the wasteland arms of the enhanced game)
+void create_power_up_at(int x, int y, int type, int life) {
+	int f = cur_power_up;
+	power_up[f].x = x;
+	power_up[f].y = y;
+	power_up[f].ok = true;
+	power_up[f].frame = 0;
+	power_up[f].life = life;
+	power_up[f].type = type;
+
+	cur_power_up++;
+	if(cur_power_up > MAX_POWER_UPS-1)
+		cur_power_up = 0;
+}
+#endif

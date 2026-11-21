@@ -30,7 +30,11 @@
 struct SDL_Surface;
 
 // Maximum number of power-ups
+#ifdef SF3500
+#define MAX_POWER_UPS	12
+#else
 #define MAX_POWER_UPS	6
+#endif
 
 // Power-up types
 #define POWER_UP_HEALTH		0

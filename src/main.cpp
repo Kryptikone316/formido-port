@@ -40,6 +40,7 @@
 #include "bomb.h"
 #include "menu.h"
 #include "credits.h"
+#include "enhanced.h"
 
 
 // Version string
@@ -315,8 +316,15 @@ int main(int argc, char *argv[]) {
 	int ans = show_menu(MENU_ID_MAIN);
 	while(ans != MENU_EXIT) {
 		// New game?
+#ifdef SF3500
+		if(ans == MENU_NEW_GAME || ans == MENU_NEW_ENHANCED) {
+			enhanced = (ans == MENU_NEW_ENHANCED);
+			start_game();
+		}
+#else
 		if(ans == MENU_NEW_GAME)
 			start_game();
+#endif
 
 		// Show the menu again
 		ans = show_menu(MENU_ID_MAIN);

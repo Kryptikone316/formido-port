@@ -33,6 +33,26 @@ High-score name: Up/Down change the letter, Right takes it, Left or B steps back
 Note: the sprite's gun hangs 60 degrees left of the body and bullets leave along `angle - 60`; twin-stick mode keeps a
 separate `aim` and sets `angle = aim + 60`, so the picture and the bullets agree.
 
+## The enhanced game
+
+The main menu has **play classic game** (the original, untouched) and **play enhanced game**.
+
+- **A cross-shaped map.** The stone platform screen is in the middle; walking off any side takes you to a wasteland
+  screen to the north, east, south or west (rocky ground, crags that block movement and bullets, cliffs on the
+  three outer sides). Bugs keep chasing across the edges. A small map in the corner shows where you are and tints a
+  screen red when bugs are in it. The wasteland pictures come from `tools/make_wasteland.py`.
+- **Power cells.** Each arm holds one power cell. Carry it back and step on the platform: it sets what the pylons
+  offer, one mode at a time (a new cell switches the mode, the same cell again adds time):
+  north = the north pylon becomes an automatic turret, east = bombs and mines are dropped on the platform,
+  south = a medbay (the platform heals fast), west = a slowing field around the platform.
+  Taking a cell wakes the hive: a pack climbs out of the rock of that arm. Carrying slows you a little.
+- **Bug ranks.** Drone (the classic bug), runner (small, fast, in packs), striker (tough, hits harder), brute (huge,
+  slow). They are the classic bug's pictures scaled and recoloured. They appear as the match goes on.
+- **The hive adapts.** It watches how you play: standing still brings heavier bugs, running around brings fast
+  swarms, throwing many bombs brings scattered swarms, low health brings runners; a short message tells you.
+- **The platform heals a little** when nothing has bitten for a while.
+- Scores of the two games are kept in separate Hall of Fame lists (left/right switches in the Hall of Fame).
+
 ## Settings (menu: game settings)
 
 Controls (twin stick / classic tank), frame limit (20, 30 or 60 fps; the game logic keeps its own 60 Hz timer, so a

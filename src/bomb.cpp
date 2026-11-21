@@ -37,6 +37,7 @@
 #include "mymath.h"
 #include "explo.h"
 #include "critter.h"
+#include "enhanced.h"
 #include "particle.h"
 
 // Bomb graphics
@@ -75,7 +76,11 @@ void explode_bomb(BOMB *b) {
 
 			// Push critters
 			float px,py;
+#ifdef SF3500
+			move_xy(RANDF(6,8)*d / ctype_stats[temp->type].mass, compute_angle(temp->x, temp->y, b->x, b->y), &px,&py);
+#else
 			move_xy(RANDF(6,8)*d, compute_angle(temp->x, temp->y, b->x, b->y), &px,&py);
+#endif
 			temp->dirx += px;
 			temp->diry += py;
 
@@ -280,7 +285,11 @@ void BOMB::move() {
 	if(num_critters > 0) {
 		CRITTER *temp = critter_first;
 		while(temp) {
+#ifdef SF3500
+			if(rects_collide(x,y,1,1, temp->x-temp->hs, temp->y-temp->hs, 2*temp->hs,2*temp->hs)) {
+#else
 			if(rects_collide(x,y,1,1, temp->x-16, temp->y-16, 32,32)) {
+#endif
 				// Bomb bounces
 				if(type == TYP_BOMB) {
 					dirx *= -0.7;
@@ -379,3 +388,13 @@ void BOMB::clear() {
 	life = 0;
 }
 
+#ifdef SF3500
+void shift_bombs(float dx, float dy) {
+	for(int f=0; f<MAX_BOMBS; f++) {
+		if(bomb[f].ok) {
+			bomb[f].x += dx;
+			bomb[f].y += dy;
+		}
+	}
+}
+#endif

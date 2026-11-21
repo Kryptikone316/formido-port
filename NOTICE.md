@@ -16,6 +16,7 @@ Original game: https://mhgames.org/formido/
 - Twin-stick controls (D-pad walks, L1 + face buttons aim and fire) as the default; the original tank controls stay available with `controls = 0` in `formido.cfg`.
 - High-score names are entered with the D-pad (the original reads a keyboard).
 - The settings menu has rows for controls, frame limit and credits instead of the key bindings (the gamepad has a fixed layout); its background `menu2_sf.dat` is upstream's `menu2.dat` with the painted key labels removed.
+- An enhanced game (cross-shaped map of five screens, power cells that change what the pylons offer, bug ranks, an adaptive hive; see README.md). Its code is in `src/enhanced.cpp`; the classic game is unchanged.
 - Source changes are marked `#ifdef SF3500`; everything else is the upstream 1.0.1 source.
 
 ## Libraries and credits

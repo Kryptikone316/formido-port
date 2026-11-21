@@ -39,19 +39,27 @@ extern Mix_Chunk *snd_menu[3];
 
 // Menu items and IDs
 #define MENU_ID_MAIN			0
+#ifdef SF3500
+	#define MENU_NEW_GAME		0	// classic
+	#define MENU_NEW_ENHANCED	1
+	#define MENU_HALL_OF_FAME	2
+	#define MENU_GAME_SETTINGS	3
+	#define MENU_EXIT			4
+#else
 	#define MENU_NEW_GAME		0
 	#define MENU_HALL_OF_FAME	1
 	#define MENU_GAME_SETTINGS	2
 	#define MENU_EXIT			3
+#endif
 
 #define MENU_ID_SETTINGS		1
 #ifdef SF3500
 	// Datafrog SF3500: the key rows are replaced by controls, frame limit and credits rows
-	#define MENU_OPT_CONTROLS	4
-	#define MENU_OPT_FPS		5
-	#define MENU_OPT_CREDITS	6
-	#define MENU_MUS_VOLUME		7
-	#define MENU_ACCEPT			8
+	#define MENU_OPT_CONTROLS	5
+	#define MENU_OPT_FPS		6
+	#define MENU_OPT_CREDITS	7
+	#define MENU_MUS_VOLUME		8
+	#define MENU_ACCEPT			9
 	#define MENU_KEY_FORWARD	MENU_OPT_CONTROLS	// first row, for the up/down wrap-around
 #else
 	#define MENU_KEY_FORWARD	4

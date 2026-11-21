@@ -30,6 +30,7 @@
 #include "blend.h"
 #include "init.h"
 #include "mymath.h"
+#include "enhanced.h"
 
 
 // Graphics
@@ -174,3 +175,13 @@ void EXPLO::clear() {
 	type = 0;
 }
 
+#ifdef SF3500
+void shift_explosions(float dx, float dy) {
+	for(int f=0; f<MAX_EXPLOS; f++) {
+		if(explo[f].ok) {
+			explo[f].x += (int)dx;
+			explo[f].y += (int)dy;
+		}
+	}
+}
+#endif

@@ -56,6 +56,10 @@ public:
 
 	int health;					// Critter health
 
+	int type;					// Rank (enhanced game; 0 = the classic bug)
+	int maxhp;					// Health when new
+	int hs;						// Half size of the body for hits
+
 	// Functions
 	void clear();				// Clearing function
 	void move();	// Movement function

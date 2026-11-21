@@ -40,6 +40,7 @@
 #include "explo.h"
 #include "bomb.h"
 #include "hof.h"
+#include "enhanced.h"
 
 
 // Array containing currently pressed keys
@@ -137,6 +138,13 @@ void create_critters() {
 		time_passed = 0;
 	}
 
+#ifdef SF3500
+	if(enhanced && create_count == 0 && num_critters < ENHANCED_MAX_CRITTERS) {
+		enhanced_spawn_event();
+		create_count = create_delay;
+	}
+	else if(!enhanced)
+#endif
 	if(create_count == 0 && num_critters < 200) {
 		// Create a critter
 
@@ -335,6 +343,11 @@ void draw(SDL_Surface *bmp) {
 	}
 
 
+#ifdef SF3500
+	if(enhanced)
+		enhanced_draw(bmp);
+#endif
+
 	// Draw the fps amount
 	if(config.show_fps) {
 		char fps_str[100] = "";
@@ -459,6 +472,10 @@ void start_game() {
 
 	// Load backgrounds
 	load_bgrounds();
+#ifdef SF3500
+	if(enhanced)
+		enhanced_begin();
+#endif
 
 	// Main loop
 	bool pause_key_down = false;
@@ -515,6 +532,9 @@ void start_game() {
 			power_up_counter++;
 			if(power_up_counter >= 60*7) {
 				power_up_counter = 0;
+#ifdef SF3500
+				if(!enhanced || world_in_centre())	// the wasteland arms have their own loot
+#endif
 				create_power_up();
 			}
 
@@ -547,6 +567,10 @@ void start_game() {
 
 			// Move player
 			player.move();
+#ifdef SF3500
+			if(enhanced)
+				enhanced_update();
+#endif
 
 			// Move particles
 			move_particles();
@@ -606,6 +630,7 @@ void start_game() {
 
 #ifdef SF3500
 	sf3500_set_in_game(0);
+	enhanced_end();
 #endif
 
 	// ..and silence, please
@@ -634,13 +659,21 @@ void start_game() {
 	SDL_FreeSurface(distort_tmp);*/
 
 	// Hiscore stuff
+#ifdef SF3500
+	char *hs_file = enhanced ? HISCORE("hiscore_enh.dat") : HISCORE("hiscore.dat");
+	static char hs_path[512];
+	strncpy(hs_path, hs_file, sizeof(hs_path) - 1);
+	hs_path[sizeof(hs_path) - 1] = '\0';
+#else
+	char *hs_path = HISCORE("hiscore.dat");
+#endif
 	HISCORE_LIST list;
-	list.load(HISCORE("hiscore.dat"));
+	list.load(hs_path);
 	int place = list.add("", kills);
 	if(place != -1) {
 		// Player is allowed to the Hall of Fame
 		list.input_name(place);
-		list.save(HISCORE("hiscore.dat"));
+		list.save(hs_path);
 	}
 }
 
@@ -712,6 +745,11 @@ inline void putpixel(SDL_Surface *dst, int x, int y, Uint32 color) {
 // Does point (x,y) collide with geometry
 bool check_collision(int x, int y) {
 
+#ifdef SF3500
+	if(enhanced)
+		return world_blocked(x, y, false);
+#endif
+
 	if(SDL_MUSTLOCK(col_map))
 		SDL_LockSurface(col_map);
 
@@ -738,6 +776,11 @@ bool check_collision(int x, int y) {
 
 // Does bullet at (x,y) collide with geometry
 bool check_bul_collision(int x, int y) {
+
+#ifdef SF3500
+	if(enhanced)
+		return world_blocked(x, y, true);
+#endif
 
 	if(SDL_MUSTLOCK(col_map))
 		SDL_LockSurface(col_map);

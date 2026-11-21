@@ -29,6 +29,7 @@
 #include "blend.h"
 #include "mymath.h"
 #include "init.h"
+#include "enhanced.h"
 
 // Particle array
 PARTICLE parts[MAX_PARTICLES];
@@ -126,3 +127,13 @@ void PARTICLE::clear() {
 	r = g = b = 0;
 }
 
+#ifdef SF3500
+void shift_particles(float dx, float dy) {
+	for(int f=0; f<MAX_PARTICLES; f++) {
+		if(parts[f].ok) {
+			parts[f].x += dx;
+			parts[f].y += dy;
+		}
+	}
+}
+#endif

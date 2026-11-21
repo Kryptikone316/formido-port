@@ -1,0 +1,979 @@
+/*
+    Formido - Datafrog SF3500 port: the enhanced game (see include/enhanced.h).
+
+    Pieces: the cross-shaped world, bug ranks and their sprites, the hive's director,
+    the platform's health regeneration, arm loot and the HUD.
+*/
+
+#ifdef SF3500
+
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <math.h>
+#include "SDL.h"
+#include "SDL_image.h"
+#include "SDL_mixer.h"
+#include "init.h"
+#include "config.h"
+#include "game.h"
+#include "player.h"
+#include "critter.h"
+#include "powerup.h"
+#include "particle.h"
+#include "mymath.h"
+#include "font.h"
+#include "enhanced.h"
+
+bool enhanced = false;
+
+const CRITTER_STATS ctype_stats[NUM_CTYPES] = {
+	//  hp   accel  dmg  hs  mass  score
+	{ 100, 0.25f, 1, 16, 1.0f, 1 },	// drone (the classic bug)
+	{  40, 0.58f, 1, 11, 0.6f, 1 },	// runner
+	{ 220, 0.33f, 2, 18, 1.8f, 3 },	// striker
+	{ 700, 0.17f, 3, 28, 4.5f, 8 },	// brute
+};
+
+SDL_Surface *ctype_gfx[NUM_CTYPES][3][35];
+
+#define CELL_W	SCREEN_W
+#define CELL_H	SCREEN_H
+
+
+///////////////////////////////////////////////////////////////////////////////
+// Helpers
+
+static int fdiv(int a, int b) {
+	return (a >= 0) ? a / b : -((-a + b - 1) / b);
+}
+
+static void get_rgb(SDL_Surface *s, int x, int y, Uint8 *r, Uint8 *g, Uint8 *b) {
+	int bpp = s->format->BytesPerPixel;
+	Uint8 *p = (Uint8 *)s->pixels + y * s->pitch + x * bpp;
+	Uint32 v = 0;
+	switch(bpp) {
+		case 1: v = *p; break;
+		case 2: v = *(Uint16 *)p; break;
+		case 3: v = p[0] | (p[1] << 8) | (p[2] << 16); break;
+		default: v = *(Uint32 *)p; break;
+	}
+	SDL_GetRGB(v, s->format, r, g, b);
+}
+
+
+///////////////////////////////////////////////////////////////////////////////
+// The world: a cross of five screens
+
+// cell index: 0 centre, 1 north, 2 east, 3 south, 4 west
+static const int CELL_GX[5] = { 0, 0, 1, 0, -1 };
+static const int CELL_GY[5] = { 0, -1, 0, 1, 0 };
+
+static int cell_index(int cx, int cy) {
+	for(int i=0; i<5; i++)
+		if(CELL_GX[i] == cx && CELL_GY[i] == cy)
+			return i;
+	return -1;
+}
+
+struct WSCREEN {
+	SDL_Surface *orig;		// clean picture
+	SDL_Surface *cur;		// picture with the blood and burn marks of this match
+	unsigned char *col;		// collision: 0 free, 1 solid, 2 solid for walking only
+};
+static WSCREEN scr[5];
+static SDL_Surface *center_cur = NULL, *center_orig = NULL;
+static bool world_loaded = false;
+static int gx = 0, gy = 0;		// the cell the display shows
+
+static unsigned char *build_col(SDL_Surface *img) {
+	unsigned char *c = new unsigned char[CELL_W * CELL_H];
+	for(int y=0; y<CELL_H; y++) {
+		for(int x=0; x<CELL_W; x++) {
+			Uint8 r,g,b;
+			get_rgb(img, x, y, &r, &g, &b);
+			unsigned char v = 0;
+			if(r == 255 && g == 255 && b == 255)
+				v = 1;
+			else if(r == 0 && g == 0 && b == 255)
+				v = 2;
+			c[y * CELL_W + x] = v;
+		}
+	}
+	return c;
+}
+
+static SDL_Surface *load_display(const char *name) {
+	SDL_Surface *tmp = IMG_Load(DAT((char *)name));
+	if(tmp == NULL)
+		error_msg("Unable to load %s!\n%s", name, IMG_GetError());
+	SDL_Surface *s = SDL_DisplayFormat(tmp);
+	if(s == NULL)
+		error_msg("Unable to load %s!\n%s", name, IMG_GetError());
+	SDL_FreeSurface(tmp);
+	return s;
+}
+
+static void load_world() {
+	static const char *pic[5] = { NULL, "waste_n.dat", "waste_e.dat", "waste_s.dat", "waste_w.dat" };
+	static const char *colf[5] = { NULL, "waste_n_col.dat", "waste_e_col.dat", "waste_s_col.dat", "waste_w_col.dat" };
+
+	// the centre is the classic screen
+	scr[0].orig = orig_bground;
+	scr[0].cur = cur_bground;
+	scr[0].col = build_col(col_map);
+	center_orig = orig_bground;
+	center_cur = cur_bground;
+
+	for(int i=1; i<5; i++) {
+		scr[i].orig = load_display(pic[i]);
+		scr[i].cur = SDL_DisplayFormat(scr[i].orig);
+		SDL_Surface *c = IMG_Load(DAT((char *)colf[i]));
+		if(c == NULL)
+			error_msg("Unable to load %s!\n%s", colf[i], IMG_GetError());
+		scr[i].col = build_col(c);
+		SDL_FreeSurface(c);
+	}
+	world_loaded = true;
+}
+
+bool world_in_centre() {
+	return gx == 0 && gy == 0;
+}
+
+bool world_blocked(int x, int y, bool bullet) {
+	int cx = gx + fdiv(x, CELL_W);
+	int cy = gy + fdiv(y, CELL_H);
+	int i = cell_index(cx, cy);
+	if(i < 0)
+		return true;			// outside the cross: solid rock
+	int lx = x - (cx - gx) * CELL_W;
+	int ly = y - (cy - gy) * CELL_H;
+	unsigned char v = scr[i].col[ly * CELL_W + lx];
+	return bullet ? (v == 1) : (v != 0);
+}
+
+void world_target(float x, float y, float *tx, float *ty) {
+	*tx = player.x;
+	*ty = player.y;
+	int bi = cell_index(gx + fdiv((int)x, CELL_W), gy + fdiv((int)y, CELL_H));
+	int pi = cell_index(gx + fdiv((int)player.x, CELL_W), gy + fdiv((int)player.y, CELL_H));
+	if(bi < 0 || pi < 0 || bi == pi || bi == 0 || pi == 0)
+		return;
+	// two different arms: through the middle of the centre screen
+	*tx = (float)(CELL_W / 2 - gx * CELL_W);
+	*ty = (float)(CELL_H / 2 - gy * CELL_H);
+}
+
+
+///////////////////////////////////////////////////////////////////////////////
+// Bug ranks: sprites made from the classic bug (scaled and recoloured)
+
+static bool sprites_made = false;
+
+// dark, mid and light colour of the rank (the classic bug's brightness is mapped onto this ramp)
+static const int RAMP[NUM_CTYPES][3][3] = {
+	{ {0,0,0}, {0,0,0}, {0,0,0} },
+	{ {70,46,14}, {196,156,58}, {252,230,140} },		// runner: pale desert yellow
+	{ {16,13,14}, {92,74,22}, {236,192,44} },			// striker: black with yellow
+	{ {14,18,30}, {62,76,104}, {156,170,196} },			// brute: dark steel blue
+};
+static const float SCALE[NUM_CTYPES] = { 1.0f, 0.70f, 1.12f, 1.70f };
+
+static SDL_Surface *make_variant(SDL_Surface *src, int type) {
+	float scale = SCALE[type];
+	int nw = (int)(src->w * scale + 0.5f), nh = (int)(src->h * scale + 0.5f);
+	SDL_Surface *dst = SDL_CreateRGBSurface(SDL_SWSURFACE, nw, nh, src->format->BitsPerPixel,
+		src->format->Rmask, src->format->Gmask, src->format->Bmask, 0);
+	if(!dst)
+		return NULL;
+	Uint32 key = SDL_MapRGB(dst->format, 255, 0, 255);
+	Uint32 skey = (src->flags & SDL_SRCCOLORKEY) ? src->format->colorkey : key;
+	SDL_FillRect(dst, NULL, key);
+
+	// a surface that has been drawn with RLE acceleration must be unpacked before its pixels are read
+	if(SDL_MUSTLOCK(src))
+		SDL_LockSurface(src);
+
+	for(int y=0; y<nh; y++) {
+		float fy = (y + 0.5f) / scale - 0.5f;
+		int y0 = (int)floorf(fy);
+		float wy = fy - y0;
+		for(int x=0; x<nw; x++) {
+			float fx = (x + 0.5f) / scale - 0.5f;
+			int x0 = (int)floorf(fx);
+			float wx = fx - x0;
+			float ar = 0, ag = 0, ab = 0, aa = 0;
+			for(int k=0; k<4; k++) {
+				int xx = x0 + (k & 1), yy = y0 + (k >> 1);
+				float w = ((k & 1) ? wx : 1 - wx) * ((k >> 1) ? wy : 1 - wy);
+				if(xx < 0 || yy < 0 || xx >= src->w || yy >= src->h)
+					continue;
+				Uint8 *p = (Uint8 *)src->pixels + yy * src->pitch + xx * 2;
+				Uint32 v = *(Uint16 *)p;
+				if(v == skey)
+					continue;
+				Uint8 r,g,b;
+				SDL_GetRGB(v, src->format, &r, &g, &b);
+				ar += w * r; ag += w * g; ab += w * b; aa += w;
+			}
+			if(aa < 0.5f)
+				continue;
+			float r = ar / aa, g = ag / aa, b = ab / aa;
+			float lum = (r * 0.30f + g * 0.59f + b * 0.11f) / 190.0f;
+			if(lum > 1) lum = 1;
+			const int (*rp)[3] = RAMP[type];
+			float t = lum * 2.0f;
+			int lo = (t < 1.0f) ? 0 : 1;
+			float u = (t < 1.0f) ? t : t - 1.0f;
+			int rr = (int)(rp[lo][0] + (rp[lo+1][0] - rp[lo][0]) * u);
+			int gg = (int)(rp[lo][1] + (rp[lo+1][1] - rp[lo][1]) * u);
+			int bb = (int)(rp[lo][2] + (rp[lo+1][2] - rp[lo][2]) * u);
+			Uint32 out = SDL_MapRGB(dst->format, rr, gg, bb);
+			*(Uint16 *)((Uint8 *)dst->pixels + y * dst->pitch + x * 2) = (Uint16)out;
+		}
+	}
+	if(SDL_MUSTLOCK(src))
+		SDL_UnlockSurface(src);
+	SDL_SetColorKey(dst, SDL_SRCCOLORKEY|SDL_RLEACCEL, key);
+	return dst;
+}
+
+static void make_sprites() {
+	if(sprites_made)
+		return;
+	sprites_made = true;
+	for(int t=0; t<NUM_CTYPES; t++) {
+		for(int f=0; f<3; f++) {
+			for(int a=0; a<35; a++) {
+				SDL_Surface *src = critter_gfx[f][a];
+				if(t == 0 || src == NULL || src->format->BitsPerPixel != 16)
+					ctype_gfx[t][f][a] = src;
+				else
+					ctype_gfx[t][f][a] = make_variant(src, t);
+			}
+		}
+	}
+}
+
+void critter_set_type(CRITTER *c, int type) {
+	if(type < 0 || type >= NUM_CTYPES)
+		type = 0;
+	c->type = type;
+	extern long enhanced_ticks;
+	float mul = 1.0f;
+	if(type > 0) {
+		float t = (float)(enhanced_ticks / 60);
+		if(t > 900) t = 900;
+		mul += 0.6f * t / 900.0f;		// the hive's bugs toughen slowly
+	}
+	c->maxhp = (int)(ctype_stats[type].hp * mul);
+	c->health = c->maxhp;
+	c->hs = ctype_stats[type].hs;
+}
+
+
+///////////////////////////////////////////////////////////////////////////////
+// The hive's director
+
+long enhanced_ticks = 0;
+static long last_damage_tick = 0;
+static int prev_health = 200;
+static int regen_acc = 0;
+
+static float hist_x[8], hist_y[8];
+static int hist_n = 0;
+static float throws_recent = 0;
+static int adapt_camp = 0, adapt_kite = 0, adapt_bombs = 0, adapt_low = 0;
+static int dominant = 0;
+static char msg[64] = "";
+static int msg_timer = 0;
+
+static long arm_last_loot[5];
+static int arm_timer[5];
+
+void enhanced_note_throw() {
+	throws_recent += 1.0f;
+}
+
+static void set_message(const char *s) {
+	snprintf(msg, sizeof(msg), "%s", s);
+	msg_timer = 60 * 5;
+}
+
+static void director_sample() {
+	float wx = player.x + gx * CELL_W, wy = player.y + gy * CELL_H;
+	for(int i=0; i<7; i++) {
+		hist_x[i] = hist_x[i+1];
+		hist_y[i] = hist_y[i+1];
+	}
+	hist_x[7] = wx;
+	hist_y[7] = wy;
+	if(hist_n < 8)
+		hist_n++;
+	throws_recent *= 0.965f;		// forgets a throw in about half a minute
+
+	adapt_camp = adapt_kite = adapt_bombs = adapt_low = 0;
+	if(hist_n >= 8) {
+		float mx = 0, my = 0, path = 0;
+		for(int i=0; i<8; i++) { mx += hist_x[i]; my += hist_y[i]; }
+		mx /= 8; my /= 8;
+		float far_ = 0;
+		for(int i=0; i<8; i++) {
+			float d = distance(hist_x[i], hist_y[i], mx, my);
+			if(d > far_) far_ = d;
+			if(i > 0)
+				path += distance(hist_x[i], hist_y[i], hist_x[i-1], hist_y[i-1]);
+		}
+		if(far_ < 90)
+			adapt_camp = 1;
+		else if(path / 7.0f > 170.0f)
+			adapt_kite = 1;
+	}
+	if(throws_recent >= 3.0f)
+		adapt_bombs = 1;
+	if(player.ok && player.health < 70)
+		adapt_low = 1;
+
+	int now = adapt_camp ? 1 : adapt_bombs ? 2 : adapt_low ? 3 : adapt_kite ? 4 : 0;
+	if(now != dominant) {
+		dominant = now;
+		switch(now) {
+			case 1: set_message("the hive adapts: heavy bugs"); break;
+			case 2: set_message("the hive adapts: scattered swarms"); break;
+			case 3: set_message("the hive smells blood"); break;
+			case 4: set_message("the hive adapts: fast swarms"); break;
+		}
+	}
+}
+
+static int count_type(int type) {
+	int n = 0;
+	for(CRITTER *c = critter_first; c; c = c->next)
+		if(c->type == type && !c->remove)
+			n++;
+	return n;
+}
+
+static int pick_type() {
+	float t = (float)(enhanced_ticks / 60);
+	float w[NUM_CTYPES];
+	w[CT_DRONE] = 100.0f;
+	w[CT_RUNNER] = (t < 20) ? 0 : (t - 20) * 0.6f; if(w[CT_RUNNER] > 40) w[CT_RUNNER] = 40;
+	w[CT_STRIKER] = (t < 50) ? 0 : (t - 50) * 0.5f; if(w[CT_STRIKER] > 30) w[CT_STRIKER] = 30;
+	w[CT_BRUTE] = (t < 100) ? 0 : (t - 100) * 0.25f; if(w[CT_BRUTE] > 14) w[CT_BRUTE] = 14;
+	if(count_type(CT_BRUTE) >= 1 + (int)(t / 150))
+		w[CT_BRUTE] = 0;
+
+	if(adapt_camp) { w[CT_BRUTE] *= 2.4f; w[CT_STRIKER] *= 1.6f; if(t >= 40 && w[CT_BRUTE] == 0 && count_type(CT_BRUTE) < 1) w[CT_BRUTE] = 6; }
+	if(adapt_kite) { w[CT_RUNNER] *= 2.2f; if(t >= 10 && w[CT_RUNNER] < 10) w[CT_RUNNER] = 10; }
+	if(adapt_bombs) { w[CT_RUNNER] *= 1.8f; w[CT_STRIKER] *= 1.3f; }
+	if(adapt_low) { w[CT_RUNNER] *= 1.6f; }
+
+	float sum = 0;
+	for(int i=0; i<NUM_CTYPES; i++) sum += w[i];
+	float r = RANDF(0, sum);
+	for(int i=0; i<NUM_CTYPES; i++) {
+		if(r < w[i])
+			return i;
+		r -= w[i];
+	}
+	return CT_DRONE;
+}
+
+// Is (lx,ly) of an arm screen close to one of its closed (rock) sides?
+static bool near_closed_side(int ci, int lx, int ly) {
+	const int B = 120;
+	switch(ci) {
+		case 1: return lx < B || lx > CELL_W - B || ly < B;				// north arm opens to the south
+		case 3: return lx < B || lx > CELL_W - B || ly > CELL_H - B;	// south arm opens to the north
+		case 2: return ly < B || ly > CELL_H - B || lx > CELL_W - B;	// east arm opens to the west
+		case 4: return ly < B || ly > CELL_H - B || lx < B;				// west arm opens to the east
+	}
+	return false;
+}
+
+static bool spawn_point(float *ox, float *oy, bool *visible) {
+	int here = cell_index(gx, gy);
+	for(int tries=0; tries<60; tries++) {
+		// the screens other than the one we are on weigh twice as much; a centre screen
+		// has no closed sides to climb out of, so nothing spawns in it while we stand there
+		int ci = RAND(0,4);
+		if(ci == here) {
+			if(here == 0 || RAND(0,2) != 0)
+				continue;
+		}
+		int lx = RAND(70, CELL_W - 70), ly = RAND(70, CELL_H - 70);
+		float x = (float)(lx + (CELL_GX[ci] - gx) * CELL_W);
+		float y = (float)(ly + (CELL_GY[ci] - gy) * CELL_H);
+		if(ci == here && !near_closed_side(ci, lx, ly))
+			continue;
+		if(distance(x, y, player.x, player.y) < 280)
+			continue;
+		if(world_blocked((int)x, (int)y, false))
+			continue;
+		*ox = x;
+		*oy = y;
+		*visible = (ci == here);
+		return true;
+	}
+	return false;
+}
+
+void enhanced_spawn_event() {
+	int type = pick_type();
+	int n = 1;
+	if(type == CT_RUNNER)
+		n = RAND(3,5) + (adapt_bombs ? 2 : 0);
+	float x, y;
+	bool visible;
+	if(!spawn_point(&x, &y, &visible))
+		return;
+	for(int i=0; i<n; i++) {
+		float px = x + ((i == 0) ? 0 : RANDF(-34, 34));
+		float py = y + ((i == 0) ? 0 : RANDF(-34, 34));
+		if(world_blocked((int)px, (int)py, false)) {
+			px = x;
+			py = y;
+		}
+		CRITTER *c = add_critter(px, py, 0);
+		critter_set_type(c, type);
+		if(visible) {
+			for(int k=0; k<6; k++)
+				add_particle(px, py, RANDF(-1.5, 1.5), RANDF(-2.0, 0.3), RAND(120,170), RAND(80,110), RAND(40,60), RAND(10,25));
+		}
+	}
+}
+
+
+///////////////////////////////////////////////////////////////////////////////
+// Power cells and the pylons' mode
+//
+// Every arm holds one power cell. Carried to the stone platform it sets what the pylons offer:
+//   north cell: the north pylon becomes an automatic turret
+//   east cell:  the pylons drop bombs and mines on the platform
+//   south cell: a medbay, the platform heals fast
+//   west cell:  a slowing field around the platform
+// One mode at a time: a new cell switches it, the same cell again adds time.
+
+static const int ARM_COL[5][3] = { {0,0,0}, {90,160,255}, {255,165,60}, {100,230,120}, {205,120,255} };
+static const char *MODE_NAME[5] = { "", "turret", "supply", "medbay", "field" };
+static const char *DIR_NAME[5] = { "", "north", "east", "south", "west" };
+static const int PYL_X[5] = { 0, 320, 478, 320, 160 };		// pylon centres on the centre screen
+static const int PYL_Y[5] = { 0, 78, 240, 400, 240 };
+
+struct POWERCELL {
+	float lx, ly;			// position on its arm's own screen
+	bool present;
+	long back_tick;			// when it is there again after being taken
+};
+static POWERCELL pcell[5];
+static int carrying = 0;			// arm of the cell the player carries, 0 for none
+static int mode = 0;				// arm of the cell that set the pylons' mode, 0 for none
+static long mode_until = 0;
+static SDL_Surface *cell_spr[5];	// the cell
+static SDL_Surface *glow_spr[5];	// soft light in the arm's colour
+
+#define MODE_SECONDS	120
+#define MODE_ADD_SECONDS 90
+#define MODE_MAX_SECONDS 240
+
+static bool mode_on() { return mode != 0 && enhanced_ticks < mode_until; }
+
+float enhanced_player_speed() {
+	return carrying ? 0.82f : 1.0f;
+}
+
+float enhanced_bug_speed(float x, float y) {
+	if(mode_on() && mode == 4) {
+		float cx = (float)(CELL_W / 2 - gx * CELL_W), cy = (float)(CELL_H / 2 - gy * CELL_H);
+		if(distance(x, y, cx, cy) < 210)
+			return 0.5f;
+	}
+	return 1.0f;
+}
+
+static SDL_Surface *make_cell_sprite(int arm) {
+	const int S = 28;
+	SDL_Surface *sp = SDL_CreateRGBSurface(SDL_SWSURFACE, S, S, 16, 0xf800, 0x07e0, 0x001f, 0);
+	Uint32 key = SDL_MapRGB(sp->format, 255, 0, 255);
+	SDL_FillRect(sp, NULL, key);
+	for(int y=0; y<S; y++) {
+		for(int x=0; x<S; x++) {
+			float dx = x - (S - 1) / 2.0f, dy = y - (S - 1) / 2.0f;
+			float ax = fabsf(dx), ay = fabsf(dy);
+			float hex = fmaxf(ay, ax * 0.866f + ay * 0.5f);		// 0 at the centre, 1 at the rim, for a hexagon
+			hex /= 12.5f;
+			if(hex > 1.0f)
+				continue;
+			float lit = 0.75f + 0.35f * (-dx * 0.5f - dy * 0.6f) / 12.0f;
+			float r, g, b;
+			if(hex > 0.86f) {				// dark rim
+				r = 40; g = 40; b = 44;
+			}
+			else if(hex > 0.5f) {			// grey metal body
+				r = 116 * lit; g = 112 * lit; b = 118 * lit;
+			}
+			else {							// glowing core in the arm's colour
+				float k = 1.0f - hex * 0.9f;
+				r = ARM_COL[arm][0] * (0.55f + 0.45f * k) + 80 * k * k;
+				g = ARM_COL[arm][1] * (0.55f + 0.45f * k) + 80 * k * k;
+				b = ARM_COL[arm][2] * (0.55f + 0.45f * k) + 80 * k * k;
+			}
+			*(Uint16 *)((Uint8 *)sp->pixels + y * sp->pitch + x * 2) = (Uint16)SDL_MapRGB(sp->format,
+				(int)fminf(r, 255), (int)fminf(g, 255), (int)fminf(b, 255));
+		}
+	}
+	SDL_SetColorKey(sp, SDL_SRCCOLORKEY, key);
+	return sp;
+}
+
+static SDL_Surface *make_glow_sprite(int arm) {
+	const int S = 72;
+	SDL_Surface *sp = SDL_CreateRGBSurface(SDL_SWSURFACE, S, S, 32, 0xff, 0xff00, 0xff0000, 0xff000000);
+	for(int y=0; y<S; y++) {
+		for(int x=0; x<S; x++) {
+			float d = sqrtf((x - S / 2.0f + 0.5f) * (x - S / 2.0f + 0.5f) + (y - S / 2.0f + 0.5f) * (y - S / 2.0f + 0.5f)) / (S / 2.0f);
+			float a = d >= 1.0f ? 0.0f : (1.0f - d) * (1.0f - d);
+			Uint8 *p = (Uint8 *)sp->pixels + y * sp->pitch + x * 4;
+			p[0] = ARM_COL[arm][0];
+			p[1] = ARM_COL[arm][1];
+			p[2] = ARM_COL[arm][2];
+			p[3] = (Uint8)(a * 150);
+		}
+	}
+	return sp;
+}
+
+static void make_cell_sprites() {
+	if(cell_spr[1])
+		return;
+	for(int i=1; i<5; i++) {
+		cell_spr[i] = make_cell_sprite(i);
+		glow_spr[i] = make_glow_sprite(i);
+	}
+}
+
+// somewhere deep in the arm, away from the open side, not inside rock
+static void place_cells() {
+	static const int LX0[5] = { 0, 110, 440, 110, 90 }, LX1[5] = { 0, 530, 550, 530, 200 };
+	static const int LY0[5] = { 0, 90, 100, 290, 100 }, LY1[5] = { 0, 190, 380, 390, 380 };
+	for(int i=1; i<5; i++) {
+		pcell[i].present = true;
+		pcell[i].back_tick = 0;
+		pcell[i].lx = (float)((LX0[i] + LX1[i]) / 2);
+		pcell[i].ly = (float)((LY0[i] + LY1[i]) / 2);
+		for(int tries=0; tries<80; tries++) {
+			int lx = RAND(LX0[i], LX1[i]), ly = RAND(LY0[i], LY1[i]);
+			int x = lx + (CELL_GX[i] - gx) * CELL_W, y = ly + (CELL_GY[i] - gy) * CELL_H;
+			if(world_blocked(x, y, false) || world_blocked(x + 22, y, false) || world_blocked(x - 22, y, false) ||
+			   world_blocked(x, y + 22, false) || world_blocked(x, y - 22, false))
+				continue;
+			pcell[i].lx = (float)lx;
+			pcell[i].ly = (float)ly;
+			break;
+		}
+	}
+}
+
+static void spawn_guard(int arm) {
+	// the hive notices the theft: a pack climbs out of the rock of that arm
+	int n = 3 + (enhanced_ticks > 60 * 60 ? 1 : 0);
+	for(int k=0; k<n; k++) {
+		for(int tries=0; tries<40; tries++) {
+			int lx = RAND(70, CELL_W - 70), ly = RAND(70, CELL_H - 70);
+			if(!near_closed_side(arm, lx, ly))
+				continue;
+			float x = (float)(lx + (CELL_GX[arm] - gx) * CELL_W), y = (float)(ly + (CELL_GY[arm] - gy) * CELL_H);
+			if(world_blocked((int)x, (int)y, false) || distance(x, y, player.x, player.y) < 260)
+				continue;
+			CRITTER *c = add_critter(x, y, 0);
+			critter_set_type(c, (k == 0 && enhanced_ticks > 60 * 45) ? CT_STRIKER : CT_RUNNER);
+			for(int q=0; q<5; q++)
+				add_particle(x, y, RANDF(-1.5, 1.5), RANDF(-2.0, 0.3), RAND(120,170), RAND(80,110), RAND(40,60), RAND(10,25));
+			break;
+		}
+	}
+}
+
+static void turret_fire(float px, float py) {
+	CRITTER *best = NULL;
+	float bd = 250;
+	for(CRITTER *c = critter_first; c; c = c->next) {
+		if(c->remove || c->health <= 0)
+			continue;
+		float d = distance(c->x, c->y, px, py);
+		if(d < bd) {
+			bd = d;
+			best = c;
+		}
+	}
+	if(!best)
+		return;
+	float ang = compute_angle(best->x, best->y, px, py);
+	best->health -= 25;
+	best->blood(RAND(2,5), ang);
+	if(best->health <= 0)
+		best->die(ang);
+	for(int k=1; k<=6; k++)
+		add_particle(px + (best->x - px) * k / 7.0f, py + (best->y - py) * k / 7.0f, 0, 0, 255, 235, 140, 4);
+	if(config.sound && RAND(0,2) == 0) {
+		int chan = Mix_PlayChannel(-1, snd_bullet[RAND(0,3)], 0);
+		int pan = (int)(px * 255 / SCREEN_W);
+		if(pan < 0) pan = 0;
+		if(pan > 255) pan = 255;
+		Mix_SetPanning(chan, 255 - pan, pan);
+	}
+}
+
+static void cells_update(int here) {
+	// cells come back some time after they were taken
+	for(int i=1; i<5; i++)
+		if(!pcell[i].present && enhanced_ticks >= pcell[i].back_tick)
+			pcell[i].present = true;
+
+	if(player.ok) {
+		// pick one up
+		if(here > 0 && !carrying && pcell[here].present) {
+			float cx = pcell[here].lx + (CELL_GX[here] - gx) * CELL_W;
+			float cy = pcell[here].ly + (CELL_GY[here] - gy) * CELL_H;
+			if(distance(player.x, player.y, cx, cy) < 28) {
+				carrying = here;
+				pcell[here].present = false;
+				pcell[here].back_tick = enhanced_ticks + 60 * 60 * 10;	// until it is delivered
+				char buf[64];
+				snprintf(buf, sizeof(buf), "%s cell taken: bring it to the platform", DIR_NAME[here]);
+				set_message(buf);
+				spawn_guard(here);
+				if(config.sound)
+					Mix_PlayChannel(-1, snd_power_up, 0);
+			}
+		}
+		// deliver it
+		if(carrying && gx == 0 && gy == 0) {
+			float dx = (player.x - CELL_W / 2) / 118.0f, dy = (player.y - CELL_H / 2) / 128.0f;
+			if(dx * dx + dy * dy < 1.0f) {
+				if(mode_on() && mode == carrying) {
+					mode_until += 60 * MODE_ADD_SECONDS;
+					if(mode_until > enhanced_ticks + 60 * MODE_MAX_SECONDS)
+						mode_until = enhanced_ticks + 60 * MODE_MAX_SECONDS;
+				}
+				else {
+					mode = carrying;
+					mode_until = enhanced_ticks + 60 * MODE_SECONDS;
+				}
+				char buf[64];
+				snprintf(buf, sizeof(buf), "%s cell: pylons are now a %s", DIR_NAME[carrying], MODE_NAME[carrying]);
+				set_message(buf);
+				pcell[carrying].back_tick = enhanced_ticks + 60 * 45;
+				carrying = 0;
+				kills += 5;
+				if(config.sound)
+					Mix_PlayChannel(-1, snd_mushroom, 0);
+				for(int f=0; f<24; f++)
+					add_particle(player.x, player.y, RANDF(-2.5, 2.5), RANDF(-2.5, 2.5), ARM_COL[mode][0], ARM_COL[mode][1], ARM_COL[mode][2], RAND(20,50));
+			}
+		}
+	}
+
+	// what the pylons do
+	if(mode_on()) {
+		float ox = (float)(-gx * CELL_W), oy = (float)(-gy * CELL_H);		// centre screen in current coordinates
+		if(mode == 1 && enhanced_ticks % 10 == 0)
+			turret_fire(PYL_X[1] + ox, PYL_Y[1] + oy);
+		if(mode == 2 && enhanced_ticks % (60 * 12) == 0) {
+			int free_items = 0;
+			for(int i=0; i<MAX_POWER_UPS; i++)
+				if(!power_up[i].ok)
+					free_items++;
+			if(free_items > 2)
+				create_power_up_at((int)(CELL_W / 2 + RANDF(-70, 70) + ox), (int)(CELL_H / 2 + RANDF(-50, 70) + oy),
+					RAND(0,1) ? POWER_UP_BOMB : POWER_UP_MINE, 60 * 14);
+		}
+		if(RAND(0,19) == 0)
+			add_particle(PYL_X[mode] + ox + RANDF(-6, 6), PYL_Y[mode] + oy - 6, RANDF(-0.2, 0.2), RANDF(-0.7, -0.3),
+				ARM_COL[mode][0], ARM_COL[mode][1], ARM_COL[mode][2], RAND(25,45));
+	}
+}
+
+
+///////////////////////////////////////////////////////////////////////////////
+// Screen changes
+
+void enhanced_shift(float dx, float dy) {
+	player.x += dx; player.y += dy;
+	player.sx += dx; player.sy += dy;
+	shift_critters(dx, dy);
+	shift_gibs(dx, dy);
+	shift_bombs(dx, dy);
+	shift_power_ups(dx, dy);
+	shift_particles(dx, dy);
+	shift_explosions(dx, dy);
+}
+
+static void switch_cell(int ngx, int ngy) {
+	int dx = ngx - gx, dy = ngy - gy;
+	enhanced_shift((float)(-dx * CELL_W), (float)(-dy * CELL_H));
+	// a few pixels inside, so that stepping back and forth on the line does not flicker
+	if(dx > 0) { player.x += 12; player.sx += 12; }
+	if(dx < 0) { player.x -= 12; player.sx -= 12; }
+	if(dy > 0) { player.y += 12; player.sy += 12; }
+	if(dy < 0) { player.y -= 12; player.sy -= 12; }
+	gx = ngx;
+	gy = ngy;
+	int i = cell_index(gx, gy);
+	cur_bground = scr[i].cur;
+	orig_bground = scr[i].orig;
+
+	// the first visit in a long while: the arm has something lying around
+	if(i > 0 && enhanced_ticks - arm_last_loot[i] > 60 * 40) {
+		arm_last_loot[i] = enhanced_ticks;
+		arm_timer[i] = 60 * 3;
+	}
+}
+
+
+///////////////////////////////////////////////////////////////////////////////
+// Per tick
+
+static int loot_type() {
+	int r = RAND(0,99);
+	if(r < 30) return POWER_UP_HEALTH;
+	if(r < 58) return POWER_UP_BOMB;
+	if(r < 86) return POWER_UP_MINE;
+	return POWER_UP_MUSHROOM;
+}
+
+static void spawn_arm_loot(int ci) {
+	for(int tries=0; tries<40; tries++) {
+		int lx = RAND(90, CELL_W - 90), ly = RAND(90, CELL_H - 90);
+		int x = lx + (CELL_GX[ci] - gx) * CELL_W;
+		int y = ly + (CELL_GY[ci] - gy) * CELL_H;
+		if(world_blocked(x, y, false) || world_blocked(x + 14, y + 14, false) || world_blocked(x - 14, y - 14, false))
+			continue;
+		create_power_up_at(x, y, loot_type(), 60 * 25);
+		return;
+	}
+}
+
+void enhanced_update() {
+	enhanced_ticks++;
+
+	// 1. the player walks into the next screen
+	int pcx = gx + fdiv((int)player.x, CELL_W);
+	int pcy = gy + fdiv((int)player.y, CELL_H);
+	if((pcx != gx || pcy != gy) && cell_index(pcx, pcy) >= 0)
+		switch_cell(pcx, pcy);
+
+	// 2. a little health back on the stone platform, when nothing has bitten for a while
+	if(player.health < prev_health)
+		last_damage_tick = enhanced_ticks;
+	prev_health = player.health;
+	if(player.ok && gx == 0 && gy == 0) {
+		float dx = (player.x - CELL_W / 2) / 100.0f, dy = (player.y - CELL_H / 2) / 112.0f;
+		bool medbay = mode_on() && mode == 3;
+		if(dx * dx + dy * dy < 1.0f && player.health < 200 && enhanced_ticks - last_damage_tick > (medbay ? 30 : 90)) {
+			if(++regen_acc >= (medbay ? 4 : 12)) {
+				regen_acc = 0;
+				player.health++;
+				prev_health = player.health;
+			}
+			if(RAND(0,19) == 0)
+				add_particle(player.x + RANDF(-12, 12), player.y + RANDF(-4, 8), RANDF(-0.2, 0.2), RANDF(-0.8, -0.3), 80, 255, 120, RAND(25,50));
+		}
+	}
+
+	// 2b. power cells and what the pylons do
+	cells_update(cell_index(gx, gy));
+
+	// 3. the hive watches
+	if(enhanced_ticks % 60 == 0)
+		director_sample();
+	if(msg_timer > 0)
+		msg_timer--;
+
+	// 4. loot in the arms
+	int here = cell_index(gx, gy);
+	if(here > 0 && player.ok) {
+		if(arm_timer[here] > 0) {
+			if(--arm_timer[here] == 0) {
+				int near_items = 0;
+				for(int i=0; i<MAX_POWER_UPS; i++)
+					if(power_up[i].ok)
+						near_items++;
+				if(near_items < 5)
+					spawn_arm_loot(here);
+				arm_timer[here] = 60 * 7;
+			}
+		}
+	}
+}
+
+void enhanced_begin() {
+	if(!world_loaded)
+		load_world();
+	make_sprites();
+	for(int i=0; i<5; i++)
+		SDL_BlitSurface(scr[i].orig, NULL, scr[i].cur, NULL);
+	gx = gy = 0;
+	cur_bground = scr[0].cur;
+	orig_bground = scr[0].orig;
+
+	enhanced_ticks = 0;
+#ifdef FORMIDO_TESTHOOKS
+	// test builds: FORMIDO_T0=<seconds> starts the hive's clock later, so every rank shows up at once
+	if(getenv("FORMIDO_T0"))
+		enhanced_ticks = (long)atoi(getenv("FORMIDO_T0")) * 60;
+#endif
+	last_damage_tick = 0;
+	prev_health = 200;
+	regen_acc = 0;
+	hist_n = 0;
+	throws_recent = 0;
+	adapt_camp = adapt_kite = adapt_bombs = adapt_low = 0;
+	dominant = 0;
+	msg[0] = '\0';
+	msg_timer = 0;
+	for(int i=0; i<5; i++) {
+		arm_last_loot[i] = -100000;
+		arm_timer[i] = 0;
+	}
+	make_cell_sprites();
+	carrying = 0;
+	mode = 0;
+	mode_until = 0;
+	place_cells();
+#ifdef FORMIDO_TESTHOOKS
+	for(int i=1; i<5; i++)
+		fprintf(stderr, "power cell %s at %d,%d\n", DIR_NAME[i], (int)pcell[i].lx, (int)pcell[i].ly);
+	if(getenv("FORMIDO_MODE")) {		// start with a pylon mode on
+		mode = atoi(getenv("FORMIDO_MODE"));
+		mode_until = enhanced_ticks + 60 * 600;
+	}
+	if(getenv("FORMIDO_WARP")) {		// start next to an arm's power cell
+		int w = atoi(getenv("FORMIDO_WARP"));
+		if(w >= 1 && w <= 4) {
+			switch_cell(CELL_GX[w], CELL_GY[w]);
+			player.x = pcell[w].lx + 60;
+			player.y = pcell[w].ly;
+			player.sx = player.x;
+			player.sy = player.y;
+		}
+	}
+#endif
+}
+
+void enhanced_end() {
+	if(center_cur) {
+		cur_bground = center_cur;
+		orig_bground = center_orig;
+	}
+	gx = gy = 0;
+}
+
+
+///////////////////////////////////////////////////////////////////////////////
+// HUD
+
+static void rect(SDL_Surface *bmp, int x, int y, int w, int h, int r, int g, int b) {
+	SDL_Rect rc;
+	rc.x = x; rc.y = y; rc.w = w; rc.h = h;
+	SDL_FillRect(bmp, &rc, SDL_MapRGB(bmp->format, r, g, b));
+}
+
+static void blit_center(SDL_Surface *bmp, SDL_Surface *sp, int x, int y) {
+	SDL_Rect r;
+	r.x = x - sp->w / 2;
+	r.y = y - sp->h / 2;
+	r.w = sp->w;
+	r.h = sp->h;
+	SDL_BlitSurface(sp, NULL, bmp, &r);
+}
+
+static void draw_world_overlays(SDL_Surface *bmp) {
+	int here = cell_index(gx, gy);
+
+	// the power cell lying in this arm
+	if(here > 0 && pcell[here].present) {
+		int x = (int)(pcell[here].lx + (CELL_GX[here] - gx) * CELL_W);
+		int y = (int)(pcell[here].ly + (CELL_GY[here] - gy) * CELL_H) + (int)(sinf(enhanced_ticks * 0.07f) * 2.5f);
+		blit_center(bmp, glow_spr[here], x, y);
+		blit_center(bmp, cell_spr[here], x, y);
+	}
+
+	// the active pylon glows in its cell's colour, the field shows as a ring around the platform
+	if(gx == 0 && gy == 0 && mode_on()) {
+		blit_center(bmp, glow_spr[mode], PYL_X[mode], PYL_Y[mode]);
+		if(mode == 4) {
+			for(int k=0; k<56; k++) {
+				float a = k * 6.2831853f / 56 + enhanced_ticks * 0.01f;
+				int x = (int)(CELL_W / 2 + cosf(a) * 210), y = (int)(CELL_H / 2 + sinf(a) * 210 * 0.9f);
+				rect(bmp, x, y, 2, 2, ARM_COL[4][0], ARM_COL[4][1], ARM_COL[4][2]);
+			}
+		}
+	}
+
+	// the cell the player carries
+	if(carrying)
+		blit_center(bmp, cell_spr[carrying], (int)player.x, (int)player.y - 40);
+}
+
+void enhanced_draw(SDL_Surface *bmp) {
+	draw_world_overlays(bmp);
+	// the map of the cross: the screen we are on is light, bugs tint a screen red
+	int cnt[5] = { 0, 0, 0, 0, 0 };
+	for(CRITTER *c = critter_first; c; c = c->next) {
+		int i = cell_index(gx + fdiv((int)c->x, CELL_W), gy + fdiv((int)c->y, CELL_H));
+		if(i >= 0 && !c->remove)
+			cnt[i]++;
+	}
+	const int CW = 18, CH = 14, GAP = 2;
+	int ox = SCREEN_W - 3 * CW - 2 * GAP - 8;
+	int oy = SCREEN_H - 3 * CH - 2 * GAP - 8;
+	int here = cell_index(gx, gy);
+	for(int i=0; i<5; i++) {
+		int cx = ox + (CELL_GX[i] + 1) * (CW + GAP);
+		int cy = oy + (CELL_GY[i] + 1) * (CH + GAP);
+		int red = cnt[i] > 12 ? 12 : cnt[i];
+		rect(bmp, cx - 1, cy - 1, CW + 2, CH + 2, 12, 10, 8);
+		if(i == here)
+			rect(bmp, cx, cy, CW, CH, 150 + red * 6, 200 - red * 8, 120 - red * 6);
+		else
+			rect(bmp, cx, cy, CW, CH, 56 + red * 14, 50 - red * 2, 40 - red * 2);
+	}
+	// the player
+	{
+		int cx = ox + (CELL_GX[here] + 1) * (CW + GAP);
+		int cy = oy + (CELL_GY[here] + 1) * (CH + GAP);
+		int px = (int)(player.x * CW / CELL_W), py = (int)(player.y * CH / CELL_H);
+		if(px < 1) px = 1;
+		if(px > CW - 3) px = CW - 3;
+		if(py < 1) py = 1;
+		if(py > CH - 3) py = CH - 3;
+		rect(bmp, cx + px, cy + py, 2, 2, 20, 30, 20);
+	}
+
+	// what the pylons are doing, and the cell on the way
+	{
+		char line[80] = "";
+		if(carrying)
+			snprintf(line, sizeof(line), "carrying the %s cell", DIR_NAME[carrying]);
+		else if(mode_on()) {
+			int secs = (int)((mode_until - enhanced_ticks) / 60);
+			snprintf(line, sizeof(line), "pylons: %s  %d:%02d", MODE_NAME[mode], secs / 60, secs % 60);
+		}
+		if(line[0]) {
+			int c = carrying ? carrying : mode;
+			rect(bmp, 8, SCREEN_H - 50, 7, 7, ARM_COL[c][0], ARM_COL[c][1], ARM_COL[c][2]);
+			font_write(bmp, FONT_NORMAL, 20, SCREEN_H - 55, line);
+		}
+	}
+
+	// the hive's message
+	if(msg_timer > 0 && (msg_timer > 40 || (msg_timer / 4) % 2 == 0)) {
+		int w = font_length(FONT_NORMAL2, msg);
+		font_write(bmp, FONT_NORMAL2, (SCREEN_W - w) / 2, 10, msg);
+	}
+}
+
+#endif

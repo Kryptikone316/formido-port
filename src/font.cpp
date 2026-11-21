@@ -23,6 +23,7 @@
 */
 
 #include <string.h>
+#include <math.h>
 #include <stdlib.h>
 #include "SDL.h"
 #include "SDL_image.h"
@@ -131,3 +132,79 @@ void unload_fonts() {
 				SDL_FreeSurface(fnt_char[i][f]);
 }
 
+#ifdef SF3500
+// The big font: the normal one scaled up with bilinear filtering
+#define BIG_SCALE	1.4f
+#define BIG_SPACING	13
+SDL_Surface *fnt_big[2][128];
+
+static SDL_Surface *scale_glyph(SDL_Surface *src) {
+	int nw = (int)(src->w * BIG_SCALE + 0.5f), nh = (int)(src->h * BIG_SCALE + 0.5f);
+	SDL_Surface *dst = SDL_CreateRGBSurface(SDL_SWSURFACE, nw, nh, src->format->BitsPerPixel,
+		src->format->Rmask, src->format->Gmask, src->format->Bmask, 0);
+	if(!dst || src->format->BitsPerPixel != 16)
+		return NULL;
+	Uint32 key = SDL_MapRGB(dst->format, 255, 0, 255);
+	Uint32 skey = (src->flags & SDL_SRCCOLORKEY) ? src->format->colorkey : key;
+	SDL_FillRect(dst, NULL, key);
+	if(SDL_MUSTLOCK(src))
+		SDL_LockSurface(src);
+	for(int y=0; y<nh; y++) {
+		float fy = (y + 0.5f) / BIG_SCALE - 0.5f;
+		int y0 = (int)floorf(fy);
+		float wy = fy - y0;
+		for(int x=0; x<nw; x++) {
+			float fx = (x + 0.5f) / BIG_SCALE - 0.5f;
+			int x0 = (int)floorf(fx);
+			float wx = fx - x0;
+			float ar = 0, ag = 0, ab = 0, aa = 0;
+			for(int k=0; k<4; k++) {
+				int xx = x0 + (k & 1), yy = y0 + (k >> 1);
+				float w = ((k & 1) ? wx : 1 - wx) * ((k >> 1) ? wy : 1 - wy);
+				if(xx < 0 || yy < 0 || xx >= src->w || yy >= src->h)
+					continue;
+				Uint32 v = *(Uint16 *)((Uint8 *)src->pixels + yy * src->pitch + xx * 2);
+				if(v == skey)
+					continue;
+				Uint8 r,g,b;
+				SDL_GetRGB(v, src->format, &r, &g, &b);
+				ar += w * r; ag += w * g; ab += w * b; aa += w;
+			}
+			if(aa < 0.45f)
+				continue;
+			*(Uint16 *)((Uint8 *)dst->pixels + y * dst->pitch + x * 2) =
+				(Uint16)SDL_MapRGB(dst->format, (int)(ar/aa), (int)(ag/aa), (int)(ab/aa));
+		}
+	}
+	if(SDL_MUSTLOCK(src))
+		SDL_UnlockSurface(src);
+	SDL_SetColorKey(dst, SDL_SRCCOLORKEY|SDL_RLEACCEL, key);
+	return dst;
+}
+
+void load_big_font() {
+	static bool done = false;
+	if(done)
+		return;
+	done = true;
+	for(int c=0; c<128; c++) {
+		fnt_big[0][c] = scale_glyph(fnt_char[FONT_NORMAL][c]);
+		fnt_big[1][c] = scale_glyph(fnt_char[FONT_NORMAL2][c]);
+	}
+}
+
+void font_write_big(SDL_Surface *bmp, int sel, int x, int y, char *str) {
+	for(unsigned int c=0; c<strlen(str); c++) {
+		SDL_Surface *g = fnt_big[sel][(int)str[c]];
+		if(g) {
+			SDL_Rect r;
+			r.x = x;
+			r.y = y;
+			r.w = g->w;
+			r.h = g->h;
+			SDL_BlitSurface(g, NULL, bmp, &r);
+		}
+		x += BIG_SPACING;
+	}
+}
+#endif

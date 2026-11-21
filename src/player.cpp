@@ -36,6 +36,7 @@
 #include "powerup.h"
 #include "particle.h"
 #include "bomb.h"
+#include "enhanced.h"
 
 
 // Player graphics (walking)
@@ -410,7 +411,11 @@ void PLAYER::shoot() {
 			CRITTER *temp = critter_first;
 			while(temp) {
 				//if(distance(bx,by, temp->x, temp->y) < 26) {
+#ifdef SF3500
+				if(rects_collide(bx,by,1,1, temp->x-temp->hs, temp->y-temp->hs, 2*temp->hs,2*temp->hs)) {
+#else
 				if(rects_collide(bx,by,1,1, temp->x-16, temp->y-16, 32,32)) {
+#endif
 					// Bullet hit an enemy!
 					temp->health -= 25;
 
@@ -418,8 +423,13 @@ void PLAYER::shoot() {
 					temp->blood(RAND(2,5), aa);
 
 					// Push the critter back
+#ifdef SF3500
+					temp->dirx += bdirx*RANDF(0,0.7) / ctype_stats[temp->type].mass;
+					temp->diry += bdiry*RANDF(0,0.7) / ctype_stats[temp->type].mass;
+#else
 					temp->dirx += bdirx*RANDF(0,0.7);
 					temp->diry += bdiry*RANDF(0,0.7);
+#endif
 
 					// Dies?
 					if(temp->health <= 0)
@@ -512,6 +522,7 @@ void PLAYER::move() {
 
 		if(mx || my) {
 			float l = (mx && my) ? 0.7071f : 1.0f;
+			l *= enhanced_player_speed();
 			dirx += mx * 2 * l;
 			diry += my * 2 * l;
 		}
@@ -553,7 +564,7 @@ void PLAYER::move() {
 	
 	// Walking forward/backward
 	if(key[key_up])
-		move_xy(2, angle, &dirx, &diry);
+		move_xy(2 * (enhanced ? enhanced_player_speed() : 1.0f), angle, &dirx, &diry);
 	else if(key[key_down])
 		move_xy(-1, angle, &dirx,&diry);
 #ifdef SF3500
@@ -616,6 +627,10 @@ void PLAYER::move() {
 		int pan = (int)(((float)x / (float)SCREEN_W) * 255);
 		Mix_SetPanning(chan, 255-pan, pan);
 
+#ifdef SF3500
+		if(enhanced)
+			enhanced_note_throw();
+#endif
 		swp_amount--;
 		if(swp_amount <= 0)
 			special_weapon = 0;
@@ -648,7 +663,10 @@ void PLAYER::move() {
 	dirx *= 0.7;
 	diry *= 0.7;
 
-	// Check screen boundaries
+	// Check screen boundaries (the enhanced game's world is closed by rock instead)
+#ifdef SF3500
+	if(!enhanced) {
+#endif
 	if(x < 0)
 		x = 0;
 	if(y < 0)
@@ -657,6 +675,9 @@ void PLAYER::move() {
 		x = screen->w;
 	if(y > screen->h)
 		y = screen->h;
+#ifdef SF3500
+	}
+#endif
 
 	// Check for power-ups
 	for(int i=0; i<MAX_POWER_UPS; i++) {

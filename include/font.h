@@ -48,6 +48,12 @@ void unload_fonts();
 // Write a string using a specifig font
 void font_write(SDL_Surface *bmp, int font, int x, int y, char *str);
 
+#ifdef SF3500
+// Larger handwriting for the main menu's entries (the painted ones cannot be extended); sel: 0 white, 1 green
+void load_big_font();
+void font_write_big(SDL_Surface *bmp, int sel, int x, int y, char *str);
+#endif
+
 // Return string length using a specifig font
 int font_length(int font, char *str);
 
