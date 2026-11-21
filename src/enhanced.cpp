@@ -291,6 +291,20 @@ static int dominant = 0;
 static char msg[64] = "";
 static int msg_timer = 0;
 
+// special ammunition: type = the bug rank it is made against
+#define AMMO_ROUNDS 160			// about 13 seconds of continuous fire
+#define AMMO_SECONDS 45			// ...and the rounds spoil after this long, fired or not
+static const char *AMMO_NAME[NUM_CTYPES] = { "hollow-point", "flechette", "incendiary", "armour-piercing" };
+static const char *RANK_NAME[NUM_CTYPES] = { "drones", "runners", "strikers", "brutes" };
+static const int AMMO_COL[NUM_CTYPES][3] = { {214,96,60}, {250,226,120}, {236,176,40}, {130,164,224} };
+static const float AMMO_BONUS[NUM_CTYPES] = { 2.0f, 2.2f, 1.9f, 2.1f };
+static int ammo_type = -1;					// the rounds the player has loaded, -1 for the standard ones
+static int ammo_left = 0;
+static long ammo_until = 0;					// tick at which the rounds run out whatever is left
+static float ammo_recent[NUM_CTYPES];		// how much of each kind was fired lately: the hive notices
+static float ammo_counter[NUM_CTYPES];		// 0..1: how hard the hive pulls that rank back
+static bool ammo_counter_on[NUM_CTYPES];
+
 static long arm_last_loot[5];
 static int arm_timer[5];
 
@@ -337,6 +351,21 @@ static void director_sample() {
 	if(player.ok && player.health < 70)
 		adapt_low = 1;
 
+	// the hive notices which rounds are being fired and starts to hold that rank back
+	for(int r=0; r<NUM_CTYPES; r++) {
+		ammo_recent[r] *= 0.9f;
+		float c = (ammo_recent[r] - 30.0f) / 120.0f;
+		ammo_counter[r] = c < 0 ? 0 : (c > 1 ? 1 : c);
+		if(ammo_counter[r] > 0.3f && !ammo_counter_on[r]) {
+			ammo_counter_on[r] = true;
+			char buf[64];
+			snprintf(buf, sizeof(buf), "the hive adapts to %s rounds", AMMO_NAME[r]);
+			set_message(buf);
+		}
+		else if(ammo_counter[r] < 0.1f)
+			ammo_counter_on[r] = false;
+	}
+
 	int now = adapt_camp ? 1 : adapt_bombs ? 2 : adapt_low ? 3 : adapt_kite ? 4 : 0;
 	if(now != dominant) {
 		dominant = now;
@@ -371,6 +400,9 @@ static int pick_type() {
 	if(adapt_kite) { w[CT_RUNNER] *= 2.2f; if(t >= 10 && w[CT_RUNNER] < 10) w[CT_RUNNER] = 10; }
 	if(adapt_bombs) { w[CT_RUNNER] *= 1.8f; w[CT_STRIKER] *= 1.3f; }
 	if(adapt_low) { w[CT_RUNNER] *= 1.6f; }
+
+	for(int i=0; i<NUM_CTYPES; i++)
+		w[i] *= 1.0f - 0.7f * ammo_counter[i];
 
 	float sum = 0;
 	for(int i=0; i<NUM_CTYPES; i++) sum += w[i];
@@ -826,11 +858,152 @@ static void cells_update(int here) {
 
 
 ///////////////////////////////////////////////////////////////////////////////
+// Special ammunition, found in the arms: about double damage against one rank, a little less against the rest
+
+struct AMMO_BOX {
+	float x, y;
+	int type;
+	int life;
+	bool ok;
+};
+#define MAX_AMMO_BOXES 4
+static AMMO_BOX abox[MAX_AMMO_BOXES];
+static int ammo_timer = 0;
+static SDL_Surface *ammo_spr[NUM_CTYPES];
+
+float enhanced_ammo_mult(int rank) {
+	if(ammo_type < 0 || ammo_left <= 0)
+		return 1.0f;
+	return (rank == ammo_type) ? AMMO_BONUS[ammo_type] : 0.9f;
+}
+
+void enhanced_ammo_fired() {
+	if(ammo_type < 0 || ammo_left <= 0)
+		return;
+	ammo_recent[ammo_type] += 1.0f;
+	if(--ammo_left <= 0) {
+		char buf[64];
+		snprintf(buf, sizeof(buf), "out of %s rounds", AMMO_NAME[ammo_type]);
+		set_message(buf);
+		ammo_type = -1;
+	}
+}
+
+void enhanced_ammo_hit(float x, float y) {
+	if(ammo_type < 0)
+		return;
+	for(int k=0; k<3; k++)
+		add_particle(x, y, RANDF(-1.8, 1.8), RANDF(-1.8, 1.8), AMMO_COL[ammo_type][0], AMMO_COL[ammo_type][1], AMMO_COL[ammo_type][2], RAND(6,12));
+}
+
+static SDL_Surface *make_ammo_sprite(int t) {
+	const int W_ = 24, H_ = 18;
+	SDL_Surface *sp = SDL_CreateRGBSurface(SDL_SWSURFACE, W_, H_, 16, 0xf800, 0x07e0, 0x001f, 0);
+	Uint32 key = SDL_MapRGB(sp->format, 255, 0, 255);
+	SDL_FillRect(sp, NULL, key);
+	for(int y=0; y<H_; y++) {
+		for(int x=0; x<W_; x++) {
+			int r = -1, g = 0, b = 0;
+			if(x < 1 || y < 1 || x >= W_ - 1 || y >= H_ - 1) { }
+			else if(x < 2 || y < 2 || x >= W_ - 2 || y >= H_ - 2) { r = 28; g = 26; b = 28; }		// rim
+			else if(y >= 6 && y < 12) {			// the coloured band, in the rank's colour
+				float sh = 0.75f + 0.25f * (1.0f - (float)(y - 6) / 6.0f);
+				r = (int)(AMMO_COL[t][0] * sh); g = (int)(AMMO_COL[t][1] * sh); b = (int)(AMMO_COL[t][2] * sh);
+				if(((x + y) / 3) % 4 == 0) { r /= 2; g /= 2; b /= 2; }									// hazard stripes
+			}
+			else {
+				float lit = 0.8f + 0.3f * (1.0f - (float)y / H_);
+				r = (int)(92 * lit); g = (int)(88 * lit); b = (int)(90 * lit);
+			}
+			if(r >= 0)
+				*(Uint16 *)((Uint8 *)sp->pixels + y * sp->pitch + x * 2) = (Uint16)SDL_MapRGB(sp->format, r > 255 ? 255 : r, g > 255 ? 255 : g, b > 255 ? 255 : b);
+		}
+	}
+	SDL_SetColorKey(sp, SDL_SRCCOLORKEY, key);
+	return sp;
+}
+
+static void spawn_ammo_box(int here) {
+	int slot = -1;
+	for(int i=0; i<MAX_AMMO_BOXES; i++) {
+		if(!abox[i].ok) { slot = i; break; }
+	}
+	if(slot < 0)
+		return;
+	for(int tries=0; tries<50; tries++) {
+		int lx = RAND(100, CELL_W - 100), ly = RAND(100, CELL_H - 100);
+		int x = lx + (CELL_GX[here] - gx) * CELL_W, y = ly + (CELL_GY[here] - gy) * CELL_H;
+		if(world_blocked(x, y, false) || world_blocked(x + 16, y, false) || world_blocked(x - 16, y, false) ||
+		   world_blocked(x, y + 16, false) || world_blocked(x, y - 16, false))
+			continue;
+		if(distance((float)x, (float)y, player.x, player.y) < 140)
+			continue;
+		float cx = pcell[here].lx + (CELL_GX[here] - gx) * CELL_W, cy = pcell[here].ly + (CELL_GY[here] - gy) * CELL_H;
+		if(distance((float)x, (float)y, cx, cy) < 90)
+			continue;
+		int t;
+		do { t = RAND(0, NUM_CTYPES - 1); } while(t == ammo_type);
+		abox[slot].x = (float)x;
+		abox[slot].y = (float)y;
+		abox[slot].type = t;
+		abox[slot].life = 60 * 50;
+		abox[slot].ok = true;
+		return;
+	}
+}
+
+static void ammo_update(int here) {
+	if(ammo_type >= 0 && enhanced_ticks >= ammo_until) {
+		char buf[64];
+		snprintf(buf, sizeof(buf), "your %s rounds are spent", AMMO_NAME[ammo_type]);
+		set_message(buf);
+		ammo_type = -1;
+		ammo_left = 0;
+	}
+	if(here > 0 && player.ok) {
+		if(--ammo_timer <= 0) {
+			ammo_timer = 60 * RAND(32, 50);			// infrequent, and only while out in an arm
+			bool already = false;
+			for(int i=0; i<MAX_AMMO_BOXES; i++) {
+				if(abox[i].ok && cell_index(gx + fdiv((int)abox[i].x, CELL_W), gy + fdiv((int)abox[i].y, CELL_H)) == here)
+					already = true;
+			}
+			if(!already)
+				spawn_ammo_box(here);
+		}
+	}
+	for(int i=0; i<MAX_AMMO_BOXES; i++) {
+		if(!abox[i].ok)
+			continue;
+		if(--abox[i].life <= 0) {
+			abox[i].ok = false;
+			continue;
+		}
+		if(player.ok && distance(player.x, player.y, abox[i].x, abox[i].y) < 24) {
+			ammo_type = abox[i].type;
+			ammo_left = AMMO_ROUNDS;
+			ammo_until = enhanced_ticks + 60 * AMMO_SECONDS;
+			abox[i].ok = false;
+			char buf[64];
+			snprintf(buf, sizeof(buf), "%s rounds: strong against %s", AMMO_NAME[ammo_type], RANK_NAME[ammo_type]);
+			set_message(buf);
+			if(config.sound)
+				Mix_PlayChannel(-1, snd_power_up, 0);
+		}
+	}
+}
+
+
+///////////////////////////////////////////////////////////////////////////////
 // Screen changes
 
 void enhanced_shift(float dx, float dy) {
 	player.x += dx; player.y += dy;
 	player.sx += dx; player.sy += dy;
+	for(int i=0; i<MAX_AMMO_BOXES; i++) {
+		abox[i].x += dx;
+		abox[i].y += dy;
+	}
 	shift_critters(dx, dy);
 	shift_gibs(dx, dy);
 	shift_bombs(dx, dy);
@@ -917,6 +1090,7 @@ void enhanced_update() {
 
 	// 2b. power cells and what the pylons do
 	cells_update(cell_index(gx, gy));
+	ammo_update(cell_index(gx, gy));
 
 	// 3. the hive watches
 	if(enhanced_ticks % 60 == 0)
@@ -971,6 +1145,18 @@ void enhanced_begin() {
 		arm_timer[i] = 0;
 	}
 	make_cell_sprites();
+	for(int i=0; i<NUM_CTYPES; i++) {
+		if(!ammo_spr[i])
+			ammo_spr[i] = make_ammo_sprite(i);
+		ammo_recent[i] = 0;
+		ammo_counter[i] = 0;
+		ammo_counter_on[i] = false;
+	}
+	for(int i=0; i<MAX_AMMO_BOXES; i++)
+		abox[i].ok = false;
+	ammo_type = -1;
+	ammo_left = 0;
+	ammo_timer = 60 * RAND(32, 50);
 	for(int i=0; i<5; i++) {
 		need_guards[i] = (i > 0);
 		sealed[i] = (i > 0);
@@ -986,6 +1172,12 @@ void enhanced_begin() {
 #ifdef FORMIDO_TESTHOOKS
 	for(int i=1; i<5; i++)
 		fprintf(stderr, "power cell %s at %d,%d\n", DIR_NAME[i], (int)pcell[i].lx, (int)pcell[i].ly);
+	if(getenv("FORMIDO_AMMO")) {		// start with special rounds, and have a crate drop soon
+		ammo_type = atoi(getenv("FORMIDO_AMMO")) % NUM_CTYPES;
+		ammo_left = 999;
+		ammo_until = enhanced_ticks + 60 * AMMO_SECONDS;
+		ammo_timer = 90;
+	}
 	if(getenv("FORMIDO_MODE")) {		// start with a pylon mode on
 		mode = atoi(getenv("FORMIDO_MODE"));
 		mode_until = enhanced_ticks + 60 * 600;
@@ -1060,6 +1252,12 @@ static void draw_world_overlays(SDL_Surface *bmp) {
 		}
 	}
 
+	// special ammunition lying about
+	for(int i=0; i<MAX_AMMO_BOXES; i++) {
+		if(abox[i].ok && (abox[i].life > 180 || (abox[i].life / 6) % 2 == 0))
+			blit_center(bmp, ammo_spr[abox[i].type], (int)abox[i].x, (int)abox[i].y);
+	}
+
 	// the cell the player carries
 	if(carrying)
 		blit_center(bmp, cell_spr[carrying], (int)player.x, (int)player.y - 40);
@@ -1129,6 +1327,14 @@ void enhanced_draw(SDL_Surface *bmp) {
 			rect(bmp, 8, SCREEN_H - 50, 7, 7, ARM_COL[c][0], ARM_COL[c][1], ARM_COL[c][2]);
 			font_write(bmp, FONT_NORMAL, 20, SCREEN_H - 55, line);
 		}
+	}
+
+	// the rounds in the gun
+	if(ammo_type >= 0) {
+		char line[80];
+		snprintf(line, sizeof(line), "%s  %d  %ds", AMMO_NAME[ammo_type], ammo_left, (int)((ammo_until - enhanced_ticks) / 60));
+		rect(bmp, 8, SCREEN_H - 72, 7, 7, AMMO_COL[ammo_type][0], AMMO_COL[ammo_type][1], AMMO_COL[ammo_type][2]);
+		font_write(bmp, FONT_NORMAL, 20, SCREEN_H - 77, line);
 	}
 
 	// the hive's message

@@ -54,6 +54,12 @@ The main menu has **play classic game** (the original, untouched) and **play enh
   (fewer or more guardians, tougher or weaker, quicker or slower); the map shows one to three pips under each arm's
   dot, so you can pick the easier cell, or come back later when the guard has changed. Individual bugs vary too:
   every bug's health and speed are rolled within a range, so no two are the same.
+- **Special ammunition.** Crates of special rounds turn up now and then, only out in the arms (about one every 30 to
+  50 seconds while you are there, and they vanish after 50 seconds). Four kinds, each made against one rank: hollow-point
+  (drones), flechette (runners), incendiary (strikers), armour-piercing (brutes): about double damage to that rank and a
+  little less to the others. Each load is 160 rounds and spoils after 45 seconds, whichever comes first; then you shoot
+  normally again. The hive notices what you fire: the longer you use one kind, the fewer of its rank it sends, with a
+  message when it adapts.
 - **Bug ranks.** Drone (the classic bug), runner (small, fast, in packs), striker (tough, hits harder), brute (huge,
   slow). They are the classic bug's pictures scaled and recoloured. They appear as the match goes on.
 - **The hive adapts.** It watches how you play: standing still brings heavier bugs, running around brings fast

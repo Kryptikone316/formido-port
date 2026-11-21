@@ -381,6 +381,11 @@ void PLAYER::shout() {
 // Shoot
 void PLAYER::shoot() {
 
+#ifdef SF3500
+	if(enhanced)
+		enhanced_ammo_fired();
+#endif
+
 	// Trace line from player to his gun direction
 	// and look for walls/enemies that are in bullet's way
 
@@ -417,7 +422,13 @@ void PLAYER::shoot() {
 				if(rects_collide(bx,by,1,1, temp->x-16, temp->y-16, 32,32)) {
 #endif
 					// Bullet hit an enemy!
+#ifdef SF3500
+					temp->health -= enhanced ? (int)(25 * enhanced_ammo_mult(temp->type) + 0.5f) : 25;
+					if(enhanced)
+						enhanced_ammo_hit(temp->x, temp->y);
+#else
 					temp->health -= 25;
+#endif
 
 					// Pour blood
 					temp->blood(RAND(2,5), aa);

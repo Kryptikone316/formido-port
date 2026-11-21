@@ -75,6 +75,12 @@ void world_target(float x, float y, float *tx, float *ty);
 bool enhanced_guard_alert(int arm);
 bool enhanced_guard_resting(CRITTER *c);
 
+// Special ammunition (dropped in the arms): damage factor of the player's current rounds against a bug rank,
+// to be called when a round is fired and when it hits
+float enhanced_ammo_mult(int rank);
+void enhanced_ammo_fired();
+void enhanced_ammo_hit(float x, float y);
+
 // How fast the player walks (slower while carrying a power cell) and how fast a bug at (x,y) may walk
 // (slower inside the west pylon's field)
 float enhanced_player_speed();
