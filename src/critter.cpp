@@ -338,7 +338,7 @@ void CRITTER::move() {
 	if(enhanced && type == CT_TYRANT && enhanced_tyrant_update(this))
 		return;
 	// a burrower under the sand creeps, rumbles and erupts on its own
-	if(enhanced && type == CT_BURROWER && enhanced_burrower_update(this))
+	if(enhanced && (type == CT_BURROWER || type == CT_STUNNER) && enhanced_burrower_update(this))
 		return;
 	// a guardian that is at home and undisturbed just stands there
 	if(enhanced && guard && enhanced_guard_resting(this)) {

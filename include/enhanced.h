@@ -34,7 +34,8 @@ extern bool enhanced;
 #define CT_BURROWER	4	// hides under the sand of the arms and erupts under the player
 #define CT_TYRANT	5	// the Hive Tyrant: an elite boss that turns up after a long time
 #define CT_PHANTOM	6	// a hallucination: only exists while the mushroom is working
-#define NUM_CTYPES	7
+#define CT_STUNNER	7	// a burrower whose eruption stuns the player; only after a Hive Tyrant has been slain
+#define NUM_CTYPES	8
 
 struct CRITTER_STATS {
 	int hp;				// health
@@ -118,7 +119,10 @@ int enhanced_damage(CRITTER *c, int dmg);
 int enhanced_player_bite(int bite);
 
 // Small badges over a bug (or the player) that is burning, bleeding or slowed
-void enhanced_draw_badges(SDL_Surface *bmp, int cx, int top, bool burning, bool bleeding, bool slowed);
+void enhanced_draw_badges(SDL_Surface *bmp, int cx, int top, bool burning, bool bleeding, bool slowed, bool stunned = false);
+
+// The player cannot walk (inside the bunker, or stunned by a burrower); aiming and firing still work
+bool enhanced_player_held();
 
 // Special ammunition (dropped in the arms): damage factor of the player's current rounds against a bug rank,
 // to be called when a round is fired and when it hits

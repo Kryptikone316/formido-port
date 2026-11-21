@@ -42,6 +42,7 @@ const CRITTER_STATS ctype_stats[NUM_CTYPES] = {
 	{ 240, 0.50f, 2, 17, 1.5f, 4 },	// burrower
 	{ 4500, 0.14f, 3, 40, 12.0f, 100 },	// Hive Tyrant
 	{ 60, 0.42f, 2, 16, 0.8f, 1 },		// phantom (hallucination)
+	{ 240, 0.50f, 2, 17, 1.5f, 8 },	// stunning burrower
 };
 
 SDL_Surface *ctype_gfx[NUM_CTYPES][3][35];
@@ -230,8 +231,9 @@ static const int RAMP[NUM_CTYPES][3][3] = {
 	{ {22,14,10}, {112,86,60}, {232,216,184} },			// burrower: dark earth and bone
 	{ {44,6,28}, {150,28,62}, {255,206,96} },			// Hive Tyrant: dark crimson with gold
 	{ {40,10,90}, {150,70,230}, {120,255,230} },		// phantom: violet with a cyan glare
+	{ {14,18,60}, {64,112,226}, {255,238,120} },		// stunning burrower: electric blue with a yellow glare
 };
-static const float SCALE[NUM_CTYPES] = { 1.0f, 0.70f, 1.12f, 1.70f, 1.20f, 2.30f, 1.0f };
+static const float SCALE[NUM_CTYPES] = { 1.0f, 0.70f, 1.12f, 1.70f, 1.20f, 2.30f, 1.0f, 1.20f };
 
 static SDL_Surface *make_variant(SDL_Surface *src, int type) {
 	float scale = SCALE[type];
@@ -460,6 +462,7 @@ static int pick_type() {
 	w[CT_BURROWER] = 0;
 	w[CT_TYRANT] = 0;
 	w[CT_PHANTOM] = 0;
+	w[CT_STUNNER] = 0;
 	w[CT_RUNNER] = (t < 20) ? 0 : (t - 20) * 0.6f; if(w[CT_RUNNER] > 40) w[CT_RUNNER] = 40;
 	w[CT_STRIKER] = (t < 50) ? 0 : (t - 50) * 0.5f; if(w[CT_STRIKER] > 30) w[CT_STRIKER] = 30;
 	w[CT_BRUTE] = (t < 100) ? 0 : (t - 100) * 0.25f; if(w[CT_BRUTE] > 14) w[CT_BRUTE] = 14;
@@ -1070,6 +1073,13 @@ static void heal_plant_update(int here) {
 // rumble when close, erupt, then fight like any bug. They dive again when the player leaves the arm.
 
 static int burrow_timer = 0;
+static bool dust_stun = false;				// a stunning burrower's dust is blue-white
+static int player_stun = 0;					// ticks the player cannot walk
+static long stun_immune_until = 0;			// no second stun straight after one
+#define STUN_TICKS		75				// 1.25 seconds
+#define STUN_IMMUNE		(60 * 5)
+static bool force_stunner = false;			// test hook
+static bool test_stunnow = false;			// test hook
 static int rumble_messages = 0;
 static SDL_Surface *crater_spr = NULL;
 
@@ -1096,10 +1106,26 @@ static int cell_of_critter(CRITTER *c) {
 
 static void dust_puff(float x, float y, int n, float spread) {
 	for(int k=0; k<n; k++)
-		add_particle(x + RANDF(-6, 6), y + RANDF(-4, 4), RANDF(-spread, spread), RANDF(-spread, spread * 0.3f), (RAND(150,190)), (RAND(105,135)), (RAND(60,80)), (RAND(10,26)));
+		if(dust_stun)
+			add_particle(x + RANDF(-6, 6), y + RANDF(-4, 4), RANDF(-spread, spread), RANDF(-spread, spread * 0.3f), (RAND(150,200)), (RAND(190,230)), (RAND(240,255)), (RAND(10,26)));
+		else
+			add_particle(x + RANDF(-6, 6), y + RANDF(-4, 4), RANDF(-spread, spread), RANDF(-spread, spread * 0.3f), (RAND(150,190)), (RAND(105,135)), (RAND(60,80)), (RAND(10,26)));
 }
 
+static bool burrower_update_impl(CRITTER *c);
 bool enhanced_burrower_update(CRITTER *c) {
+	dust_stun = (c->type == CT_STUNNER);
+	bool r = burrower_update_impl(c);
+	dust_stun = false;
+	return r;
+}
+
+bool enhanced_player_held() {
+	return enhanced_in_bunker() || player_stun > 0;
+}
+
+static bool burrower_update_impl(CRITTER *c) {
+	bool st = (c->type == CT_STUNNER);
 	int cc = cell_of_critter(c);
 	int pc = cell_index(gx + fdiv((int)player.x, CELL_W), gy + fdiv((int)player.y, CELL_H));
 	bool with_player = player.ok && cc > 0 && cc == pc;
@@ -1115,7 +1141,7 @@ bool enhanced_burrower_update(CRITTER *c) {
 				c->btimer = 50;
 				if(rumble_messages < 3) {
 					rumble_messages++;
-					set_message("the ground trembles");
+					set_message(st ? "the ground hums" : "the ground trembles");
 				}
 				return true;
 			}
@@ -1162,14 +1188,25 @@ bool enhanced_burrower_update(CRITTER *c) {
 				r.w = crater_spr->w;
 				r.h = crater_spr->h;
 				SDL_BlitSurface(crater_spr, NULL, cur_bground, &r);
-				if(player.ok && distance(c->x, c->y, player.x, player.y) < 56 && !enhanced_bunker_absorb(25)) {
-					player.health -= 25;
+				if(player.ok && distance(c->x, c->y, player.x, player.y) < 56 && !enhanced_bunker_absorb(st ? 10 : 25)) {
+					player.health -= st ? 10 : 25;
 					if(player.health <= 0)
 						player.die();
-					float kx, ky;
-					move_xy(7.0f, compute_angle(player.x, player.y, c->x, c->y), &kx, &ky);		// away from the burst
-					player.dirx += kx;
-					player.diry += ky;
+					if(st) {
+						// the shock: no walking for a moment (aiming and firing still work), then a few seconds of immunity
+						if(enhanced_ticks >= stun_immune_until) {
+							player_stun = STUN_TICKS;
+							stun_immune_until = enhanced_ticks + STUN_TICKS + STUN_IMMUNE;
+							player.dirx = player.diry = 0;
+							set_message("stunned!");
+						}
+					}
+					else {
+						float kx, ky;
+						move_xy(7.0f, compute_angle(player.x, player.y, c->x, c->y), &kx, &ky);		// away from the burst
+						player.dirx += kx;
+						player.diry += ky;
+					}
 				}
 				if(config.sound)
 					Mix_PlayChannel(-1, snd_explo[1], 0);
@@ -1193,7 +1230,7 @@ bool enhanced_burrower_update(CRITTER *c) {
 static int burrowers_in_cell(int ci) {
 	int n = 0;
 	for(CRITTER *c = critter_first; c; c = c->next)
-		if(c->type == CT_BURROWER && !c->remove && cell_of_critter(c) == ci)
+		if((c->type == CT_BURROWER || c->type == CT_STUNNER) && !c->remove && cell_of_critter(c) == ci)
 			n++;
 	return n;
 }
@@ -1203,13 +1240,27 @@ static void spawn_burrower(int ci) {
 		int lx = (RAND(80, CELL_W - 80)), ly = (RAND(80, CELL_H - 80));
 		float x = (float)(lx + (CELL_GX[ci] - gx) * CELL_W), y = (float)(ly + (CELL_GY[ci] - gy) * CELL_H);
 		float d = distance(x, y, player.x, player.y);
-		if(d < 220 || d > 380)
+		if((d < 220 || d > 380) && !test_stunnow)
 			continue;
 		if(world_blocked((int)x, (int)y, false) || world_blocked((int)x + 14, (int)y, false) || world_blocked((int)x - 14, (int)y, false) ||
 		   world_blocked((int)x, (int)y + 14, false) || world_blocked((int)x, (int)y - 14, false))
 			continue;
+		// after at least one Hive Tyrant has been slain some of them stun: 30 % of the burrowers after the first, 15 % more
+		// for each further one (at most 80 %)
+		float chance = stat_tyrants > 0 ? 0.30f + 0.15f * (stat_tyrants - 1) : 0.0f;
+		if(chance > 0.80f)
+			chance = 0.80f;
+		bool stun_variant = force_stunner || RANDF(0, 1) < chance;
+		if(test_stunnow) {		// test builds: already rumbling beside the player, erupting in half a second
+			x = player.x + 30;
+			y = player.y;
+		}
 		CRITTER *c = add_critter(x, y, 0);
-		critter_set_type(c, CT_BURROWER);
+		critter_set_type(c, stun_variant ? CT_STUNNER : CT_BURROWER);
+		if(test_stunnow) {
+			c->bstate = 1;
+			c->btimer = 30;
+		}
 		c->hidden = true;
 		c->bstate = 0;
 		c->btimer = 60 * (RAND(2, 5));
@@ -1626,7 +1677,7 @@ static void player_status_tick() {
 ///////////////////////////////////////////////////////////////////////////////
 // Badges over burning, bleeding and slowed bugs (and the player)
 
-static SDL_Surface *badge_spr[3] = { NULL, NULL, NULL };		// flame, drop, slowed
+static SDL_Surface *badge_spr[4] = { NULL, NULL, NULL, NULL };		// flame, drop, slowed, stunned
 
 static bool badge_mask(int kind, int x, int y) {			// 0..9 each way
 	float dx = x - 4.5f, dy = y - 4.5f;
@@ -1638,6 +1689,8 @@ static bool badge_mask(int kind, int x, int y) {			// 0..9 each way
 		float cy = y - 6.0f;
 		return (dx * dx + cy * cy < 11.0f) || (y < 6 && fabsf(dx) < (y + 0.5f) * 0.55f);
 	}
+	if(kind == 3)			// stunned: a spark
+		return (fabsf(dx) < 1.3f && fabsf(dy) < 4.6f) || (fabsf(dy) < 1.3f && fabsf(dx) < 4.6f) || (fabsf(dx) + fabsf(dy) < 3.2f);
 	// slowed: a heavy down arrow
 	if(y < 5 && fabsf(dx) < 1.8f)
 		return true;
@@ -1647,8 +1700,8 @@ static bool badge_mask(int kind, int x, int y) {			// 0..9 each way
 static void make_badge_sprites() {
 	if(badge_spr[0])
 		return;
-	static const int COL[3][3] = { {255,150,40}, {220,30,40}, {110,200,255} };
-	for(int k=0; k<3; k++) {
+	static const int COL[4][3] = { {255,150,40}, {220,30,40}, {110,200,255}, {255,235,60} };
+	for(int k=0; k<4; k++) {
 		const int S = 12;
 		SDL_Surface *sp = SDL_CreateRGBSurface(SDL_SWSURFACE, S, S, 16, 0xf800, 0x07e0, 0x001f, 0);
 		Uint32 key = SDL_MapRGB(sp->format, 255, 0, 255);
@@ -1674,16 +1727,16 @@ static void make_badge_sprites() {
 	}
 }
 
-void enhanced_draw_badges(SDL_Surface *bmp, int cx, int top, bool burning, bool bleeding, bool slowed) {
+void enhanced_draw_badges(SDL_Surface *bmp, int cx, int top, bool burning, bool bleeding, bool slowed, bool stunned) {
 	if(!badge_spr[0])
 		return;
-	int n = (burning ? 1 : 0) + (bleeding ? 1 : 0) + (slowed ? 1 : 0);
+	int n = (burning ? 1 : 0) + (bleeding ? 1 : 0) + (slowed ? 1 : 0) + (stunned ? 1 : 0);
 	if(n == 0)
 		return;
 	int x = cx - n * 7 + 1;
 	SDL_Rect r;
-	for(int k=0; k<3; k++) {
-		bool on = (k == 0) ? burning : (k == 1) ? bleeding : slowed;
+	for(int k=0; k<4; k++) {
+		bool on = (k == 0) ? burning : (k == 1) ? bleeding : (k == 2) ? slowed : stunned;
 		if(!on)
 			continue;
 		r.x = x; r.y = top; r.w = 12; r.h = 12;
@@ -2143,7 +2196,7 @@ static bool has_mut(int m) {
 
 // the weak run away, the strong stand in front of it
 int enhanced_bug_mode(CRITTER *c) {
-	if(!ty_alive || c->type == CT_TYRANT || c->guard || c->brood || c->hidden || c->type == CT_BURROWER || c->type == CT_PHANTOM)
+	if(!ty_alive || c->type == CT_TYRANT || c->guard || c->brood || c->hidden || c->type == CT_BURROWER || c->type == CT_STUNNER || c->type == CT_PHANTOM)
 		return 0;
 	if(c->type == CT_DRONE || c->type == CT_RUNNER)
 		return 1;
@@ -2935,12 +2988,12 @@ void enhanced_update() {
 #ifdef FORMIDO_TESTHOOKS
 	if(getenv("FORMIDO_HPLOG") && enhanced_ticks % (atoi(getenv("FORMIDO_HPLOG")) > 1 ? atoi(getenv("FORMIDO_HPLOG")) : 60) == 0)
 		fprintf(stderr, "tick %ld hp %d at %d,%d blocked %d thorn %d cell %d,%d\n", enhanced_ticks, player.health, (int)player.x, (int)player.y, (int)world_blocked((int)player.x, (int)player.y, false), (int)world_thorns((int)player.x, (int)player.y), gx, gy);
-	if(getenv("FORMIDO_HPLOG") && enhanced_ticks % 60 == 0) {
+	if(getenv("FORMIDO_HPLOG") && enhanced_ticks % (atoi(getenv("FORMIDO_HPLOG")) > 1 ? atoi(getenv("FORMIDO_HPLOG")) : 60) == 0) {
 		int n = 0;
 		for(CRITTER *c = critter_first; c; c = c->next)
 			if(c->type == CT_PHANTOM && !c->remove)
 				n++;
-		fprintf(stderr, "phantoms %d drugs %d\n", n, player.drugs);
+		fprintf(stderr, "phantoms %d drugs %d stun %d\n", n, player.drugs, player_stun);
 	}
 #endif
 
@@ -3009,6 +3062,14 @@ void enhanced_update() {
 	tyrant_update();
 	phantom_update();
 	player_status_tick();
+	if(player_stun > 0) {
+		player_stun--;
+		if(player.ok) {
+			player.dirx = player.diry = 0;
+			if(RAND(0,2) == 0)
+				add_particle(player.x + RANDF(-16, 16), player.y + RANDF(-16, 12), RANDF(-1.2, 1.2), RANDF(-1.2, 0.4), 255, 240, (RAND(90,150)), (RAND(6,12)));
+		}
+	}
 	if(player.ok && player.health <= 0)
 		player.die();
 
@@ -3101,6 +3162,8 @@ void enhanced_begin() {
 		stat_kills[i] = 0;
 	stat_cells = 0;
 	stat_tyrants = 0;
+	player_stun = 0;
+	stun_immune_until = 0;
 	phantom_timer = 60;
 	phantoms_out = false;
 	spore_ok = false;
@@ -3171,6 +3234,12 @@ void enhanced_begin() {
 		spore_y = player.y + 20;
 		spore_life = SPORE_LIFE;
 	}
+	if(getenv("FORMIDO_STUNNER"))		// stunning burrowers regardless of the Tyrant rule
+		force_stunner = true;
+	if(getenv("FORMIDO_STUNNOW"))
+		test_stunnow = true;
+	if(getenv("FORMIDO_TYRANTS"))		// pretend this many Tyrants were slain
+		stat_tyrants = atoi(getenv("FORMIDO_TYRANTS"));
 	if(getenv("FORMIDO_MUSH"))			// start under the mushroom's effect
 		player.drugs = atoi(getenv("FORMIDO_MUSH")) * 60;
 	if(getenv("FORMIDO_TYRANT"))		// the Tyrant stirs soon (4 s of warning)
@@ -3337,7 +3406,7 @@ static void draw_world_overlays(SDL_Surface *bmp) {
 	bunker_draw_over(bmp);
 
 	// badges over the player
-	enhanced_draw_badges(bmp, (int)player.x, (int)player.y - 36, player_burn > 0, player_bleed > 0, player_slow > 0);
+	enhanced_draw_badges(bmp, (int)player.x, (int)player.y - 36, player_burn > 0, player_bleed > 0, player_slow > 0, player_stun > 0);
 
 	tyrant_draw_over(bmp);
 
@@ -3428,6 +3497,11 @@ void enhanced_draw(SDL_Surface *bmp) {
 		if(player_slow > 0) {
 			rect(bmp, x, SCREEN_H - 20, 7, 7, 110, 200, 255);
 			font_write(bmp, FONT_NORMAL, x + 10, SCREEN_H - 27, (char *)"slowed");
+			x += 96;
+		}
+		if(player_stun > 0) {
+			rect(bmp, x, SCREEN_H - 20, 7, 7, 255, 235, 60);
+			font_write(bmp, FONT_NORMAL, x + 10, SCREEN_H - 27, (char *)"stunned");
 		}
 	}
 
@@ -3681,7 +3755,7 @@ void enhanced_show_legend() {
 		char l1[100], l2[100];
 		snprintf(l1, sizeof(l1), "time %d:%02d  score %d  tyrants %d  hive %d  cells %d", secs / 60, secs % 60, kills, stat_tyrants, hive_level, stat_cells);
 		snprintf(l2, sizeof(l2), "drones %d runners %d strikers %d brutes %d burrow %d",
-			stat_kills[CT_DRONE], stat_kills[CT_RUNNER], stat_kills[CT_STRIKER], stat_kills[CT_BRUTE], stat_kills[CT_BURROWER]);
+			stat_kills[CT_DRONE], stat_kills[CT_RUNNER], stat_kills[CT_STRIKER], stat_kills[CT_BRUTE], stat_kills[CT_BURROWER] + stat_kills[CT_STUNNER]);
 		font_write(bmp, FONT_NORMAL2, 14, 400, l1);
 		font_write(bmp, FONT_NORMAL, 14, 424, l2);
 	}

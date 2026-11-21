@@ -134,6 +134,11 @@ The main menu has **play classic game** (the original, untouched) and **play enh
   who stands still, or is busy fighting, is not. After that it fights like a bug (earth-and-bone coloured, tougher than
   a drone) and dives again, healed, if you leave the arm. They are rare: the first after about a minute of the match,
   then at most one per arm (two after 8 minutes), a new one every 80 to 140 seconds while you are out in an arm.
+- **Stunning burrowers.** Once you have slain a Hive Tyrant, some of the burrowers that come after are the electric-blue
+  kind: 30 % of them after the first Tyrant, 15 % more for each further one (up to 80 %). Same hiding, creeping and
+  rumble ("the ground hums"), but the eruption only does 10 damage and **stuns you for 1.25 seconds**: you cannot walk
+  (you can still turn, aim and fire) and a yellow spark badge and "stunned" show; you are then immune to stuns for 5
+  seconds, so it can never be chained. The bunker absorbs the shock.
 - **The hive adapts.** It watches how you play: standing still brings heavier bugs, running around brings fast
   swarms, throwing many bombs brings scattered swarms, low health brings runners; a short message tells you.
 - **The platform heals a little** when nothing has bitten for a while.
@@ -155,6 +160,13 @@ removed and the rows drawn with the game's own font).
 
 Uses the Codescape toolchain and sysroot in `~/handhelds/sf3000-work/buildroot/output/host` (override with
 `MIPS_PREFIX` and `SYSROOT`). `-O2` only: no `-ffast-math` (upstream's Makefile has it) and no `-mdspr2`.
+
+## Collision stress test
+
+`python3 tools/collision_sim.py data [--runs N] [--fast] [--substep]` reproduces the game's movement rules on the real
+collision maps of the five screens and shoves a simulated player into walls, corners and cracks, counting tunnelling,
+being left inside rock, teleports by the unstick step, hangs (no direction frees the player) and pockets. It also times
+how long it takes to get away from a wall freely and with a bug in contact. Run it after regenerating the arm maps.
 
 ## Headless test (QEMU)
 
