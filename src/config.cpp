@@ -59,9 +59,13 @@ void load_config(char *file, CONFIG *conf) {
 	conf->controls = 1;
 	conf->fps_cap = 30;
 	conf->credits = 1;
+	conf->laser = 1;
 	fscanf(f, "controls = %d\n", &(conf->controls));
 	fscanf(f, "frame_limit = %d\n", &(conf->fps_cap));
 	fscanf(f, "credits_on_exit = %d\n", &(conf->credits));
+	fscanf(f, "laser_sight = %d\n", &(conf->laser));
+	if(conf->laser < 0 || conf->laser > 2)
+		conf->laser = 1;
 	if(conf->fps_cap != 20 && conf->fps_cap != 30 && conf->fps_cap != 60)
 		conf->fps_cap = 30;
 #endif
@@ -112,6 +116,7 @@ void save_config(char *file, CONFIG *conf) {
 	fprintf(f, "controls = %d\n", (conf->controls));
 	fprintf(f, "frame_limit = %d\n", (conf->fps_cap));
 	fprintf(f, "credits_on_exit = %d\n", (conf->credits));
+	fprintf(f, "laser_sight = %d\n", (conf->laser));
 #endif
 
 	fclose(f);

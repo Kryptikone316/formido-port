@@ -334,6 +334,9 @@ int show_menu(int menu_id) {
 					case MENU_OPT_CONTROLS:
 						config.controls = !config.controls;
 						break;
+					case MENU_OPT_LASER:
+						config.laser = (config.laser + 1) % 3;
+						break;
 					case MENU_OPT_FPS:
 						config.fps_cap = (config.fps_cap == 20) ? 30 : (config.fps_cap == 30) ? 60 : 20;
 						sf3500_set_frame_cap(config.fps_cap);
@@ -395,6 +398,11 @@ int show_menu(int menu_id) {
 					if(config.sound)
 						Mix_PlayChannel(-1, snd_menu[0], 0);
 				}
+				else if(menu_item == MENU_OPT_LASER) {
+					config.laser = (config.laser + dir + 3) % 3;
+					if(config.sound)
+						Mix_PlayChannel(-1, snd_menu[0], 0);
+				}
 				else if(menu_item == MENU_OPT_FPS) {
 					static const int caps[3] = { 20, 30, 60 };
 					int i = (config.fps_cap == 20) ? 0 : (config.fps_cap == 30) ? 1 : 2;
@@ -453,7 +461,7 @@ int show_menu(int menu_id) {
 		else if(menu_id == MENU_ID_SETTINGS) {
 			ax = 288;
 #ifdef SF3500
-			static const int row_y[5] = { 190, 238, 286, 346, 424 };	// controls, frame limit, credits, volume, accept
+			static const int row_y[6] = { 180, 222, 264, 306, 372, 430 };	// controls, laser, frame limit, credits, volume, accept
 			ay = row_y[menu_item - MENU_OPT_CONTROLS] - 4;
 #else
 			ay = 170 + (menu_item - MENU_KEY_FORWARD) * 35;
@@ -489,25 +497,30 @@ int show_menu(int menu_id) {
 		if(menu_id == MENU_ID_SETTINGS) {
 #ifdef SF3500
 			// Rows drawn with the game's own handwriting fonts on the cleaned panel
-			static const int row_y[5] = { 190, 238, 286, 346, 424 };
+			static const int row_y[6] = { 180, 222, 264, 306, 372, 430 };
 			font_write(screen, FONT_NORMAL2, 322, 150, "game settings");
 
 			font_write(screen, (menu_item == MENU_OPT_CONTROLS) ? FONT_NORMAL2 : FONT_NORMAL, 322, row_y[0], "controls");
 			font_write(screen, (menu_item == MENU_OPT_CONTROLS) ? FONT_NORMAL2 : FONT_NORMAL, 490, row_y[0], (char *)(config.controls ? "twin stick" : "classic"));
 			font_write(screen, FONT_NORMAL, 322, row_y[0]+19, (char *)(config.controls ? "L1 + A B X Y aim and fire" : "left/right turn, A fires"));
 
+			static char *laser_words[3] = { (char *)"off", (char *)"enhanced", (char *)"always" };
+			font_write(screen, (menu_item == MENU_OPT_LASER) ? FONT_NORMAL2 : FONT_NORMAL, 322, row_y[1], "laser sight");
+			font_write(screen, (menu_item == MENU_OPT_LASER) ? FONT_NORMAL2 : FONT_NORMAL, 490, row_y[1], laser_words[config.laser]);
+			font_write(screen, FONT_NORMAL, 322, row_y[1]+19, "a red line shows your aim");
+
 			char buf[32];
 			sprintf(buf, "%d fps", config.fps_cap);
-			font_write(screen, (menu_item == MENU_OPT_FPS) ? FONT_NORMAL2 : FONT_NORMAL, 322, row_y[1], "frame limit");
-			font_write(screen, (menu_item == MENU_OPT_FPS) ? FONT_NORMAL2 : FONT_NORMAL, 490, row_y[1], buf);
-			font_write(screen, FONT_NORMAL, 322, row_y[1]+19, "20 for slower devices");
+			font_write(screen, (menu_item == MENU_OPT_FPS) ? FONT_NORMAL2 : FONT_NORMAL, 322, row_y[2], "frame limit");
+			font_write(screen, (menu_item == MENU_OPT_FPS) ? FONT_NORMAL2 : FONT_NORMAL, 490, row_y[2], buf);
+			font_write(screen, FONT_NORMAL, 322, row_y[2]+19, "20 for slower devices");
 
-			font_write(screen, (menu_item == MENU_OPT_CREDITS) ? FONT_NORMAL2 : FONT_NORMAL, 322, row_y[2], "credits on exit");
-			font_write(screen, (menu_item == MENU_OPT_CREDITS) ? FONT_NORMAL2 : FONT_NORMAL, 490, row_y[2], (char *)(config.credits ? "on" : "off"));
-			font_write(screen, FONT_NORMAL, 322, row_y[2]+19, "select+start leaves now");
+			font_write(screen, (menu_item == MENU_OPT_CREDITS) ? FONT_NORMAL2 : FONT_NORMAL, 322, row_y[3], "credits on exit");
+			font_write(screen, (menu_item == MENU_OPT_CREDITS) ? FONT_NORMAL2 : FONT_NORMAL, 490, row_y[3], (char *)(config.credits ? "on" : "off"));
+			font_write(screen, FONT_NORMAL, 322, row_y[3]+19, "select+start leaves now");
 
-			font_write(screen, (menu_item == MENU_MUS_VOLUME) ? FONT_NORMAL2 : FONT_NORMAL, 322, row_y[3]-18, "music volume");
-			font_write(screen, (menu_item == MENU_ACCEPT) ? FONT_NORMAL2 : FONT_NORMAL, 322, row_y[4], "accept settings");
+			font_write(screen, (menu_item == MENU_MUS_VOLUME) ? FONT_NORMAL2 : FONT_NORMAL, 322, row_y[4]-18, "music volume");
+			font_write(screen, (menu_item == MENU_ACCEPT) ? FONT_NORMAL2 : FONT_NORMAL, 322, row_y[5], "accept settings");
 			{
 				// The volume slider
 				float vol = config.music_vol / 128.0;
@@ -515,7 +528,7 @@ int show_menu(int menu_id) {
 				for(int i=0; i<15; i++) {
 					SDL_Rect r;
 					r.x = 322+i*bw;
-					r.y = row_y[3]+4;
+					r.y = row_y[4]+4;
 					r.w = bw;
 					r.h = energy_bar[0]->h;
 					SDL_BlitSurface(((float)i/15.0 >= vol) ? energy_bar[1] : energy_bar[0], NULL, screen, &r);

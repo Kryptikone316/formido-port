@@ -56,10 +56,11 @@ extern Mix_Chunk *snd_menu[3];
 #ifdef SF3500
 	// Datafrog SF3500: the key rows are replaced by controls, frame limit and credits rows
 	#define MENU_OPT_CONTROLS	5
-	#define MENU_OPT_FPS		6
-	#define MENU_OPT_CREDITS	7
-	#define MENU_MUS_VOLUME		8
-	#define MENU_ACCEPT			9
+	#define MENU_OPT_LASER		6
+	#define MENU_OPT_FPS		7
+	#define MENU_OPT_CREDITS	8
+	#define MENU_MUS_VOLUME		9
+	#define MENU_ACCEPT			10
 	#define MENU_KEY_FORWARD	MENU_OPT_CONTROLS	// first row, for the up/down wrap-around
 #else
 	#define MENU_KEY_FORWARD	4

@@ -1762,4 +1762,67 @@ void enhanced_draw(SDL_Surface *bmp) {
 	}
 }
 
+
+///////////////////////////////////////////////////////////////////////////////
+// Laser sight
+
+static void blend_pixel(SDL_Surface *s, int x, int y, int r, int g, int b, float a) {
+	if(x < 0 || y < 0 || x >= s->w || y >= s->h)
+		return;
+	Uint16 *p = (Uint16 *)((Uint8 *)s->pixels + y * s->pitch + x * 2);
+	Uint8 or_, og, ob;
+	SDL_GetRGB(*p, s->format, &or_, &og, &ob);
+	*p = (Uint16)SDL_MapRGB(s->format, (int)(or_ + (r - or_) * a), (int)(og + (g - og) * a), (int)(ob + (b - ob) * a));
+}
+
+void laser_sight_draw(SDL_Surface *bmp) {
+	if(!player.ok || config.laser == 0 || (config.laser == 1 && !enhanced))
+		return;
+	if(bmp->format->BitsPerPixel != 16)
+		return;
+
+	// from the muzzle, along the way the bullets leave (the sprite's gun hangs 40 degrees off the body, the
+	// bullets go 60 degrees off it)
+	float mx, my, dx, dy;
+	move_xy(28, add_angle(player.angle, -40), &mx, &my);
+	mx += player.x;
+	my += player.y;
+	move_xy(1.0f, add_angle(player.angle, -60), &dx, &dy);
+
+	const int RANGE = 260;
+	if(SDL_MUSTLOCK(bmp))
+		SDL_LockSurface(bmp);
+	int end = RANGE;
+	for(int t=0; t<=RANGE; t++) {
+		float px = mx + dx * t, py = my + dy * t;
+		if(t > 4 && t % 3 == 0) {
+			if(check_bul_collision((int)px, (int)py)) { end = t; break; }
+			bool hit = false;
+			if(t % 6 == 0) {
+				for(CRITTER *c = critter_first; c; c = c->next) {
+					if(c->remove || c->hidden)
+						continue;
+					if(rects_collide(px, py, 1, 1, c->x - c->hs, c->y - c->hs, 2 * c->hs, 2 * c->hs)) { hit = true; break; }
+				}
+			}
+			if(hit) { end = t; break; }
+		}
+		float a = 0.50f * (1.0f - (float)t / (RANGE * 1.2f));
+		if(a < 0.14f) a = 0.14f;
+		blend_pixel(bmp, (int)px, (int)py, 255, 40, 30, a);
+		// a faint halo to each side so that the line is easy to see on the sand
+		blend_pixel(bmp, (int)(px - dy + 0.5f), (int)(py + dx + 0.5f), 255, 40, 30, a * 0.25f);
+		blend_pixel(bmp, (int)(px + dy + 0.5f), (int)(py - dx + 0.5f), 255, 40, 30, a * 0.25f);
+	}
+	// a small dot where it ends
+	{
+		int ex = (int)(mx + dx * end), ey = (int)(my + dy * end);
+		for(int yy=-1; yy<=1; yy++)
+			for(int xx=-1; xx<=1; xx++)
+				blend_pixel(bmp, ex + xx, ey + yy, 255, 60, 40, (xx == 0 && yy == 0) ? 0.85f : 0.45f);
+	}
+	if(SDL_MUSTLOCK(bmp))
+		SDL_UnlockSurface(bmp);
+}
+
 #endif

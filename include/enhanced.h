@@ -84,6 +84,10 @@ bool enhanced_burrower_update(CRITTER *c);
 bool enhanced_guard_alert(int arm);
 bool enhanced_guard_resting(CRITTER *c);
 
+// Laser sight: a thin red line from the muzzle along the line of fire (called when the scene is drawn; shows
+// according to the laser_sight setting)
+void laser_sight_draw(SDL_Surface *bmp);
+
 // Special ammunition (dropped in the arms): damage factor of the player's current rounds against a bug rank,
 // to be called when a round is fired and when it hits
 float enhanced_ammo_mult(int rank);

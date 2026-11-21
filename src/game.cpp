@@ -311,6 +311,9 @@ void draw(SDL_Surface *bmp) {
 	// Draw the player (after critters if alive)
 	if(player.ok)
 		player.draw(bmp);
+#ifdef SF3500
+	laser_sight_draw(bmp);
+#endif
 
 	// Draw the particles
 	draw_particles(bmp);

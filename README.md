@@ -60,6 +60,8 @@ The main menu has **play classic game** (the original, untouched) and **play enh
   little less to the others. Each load is 160 rounds and spoils after 45 seconds, whichever comes first; then you shoot
   normally again. The hive notices what you fire: the longer you use one kind, the fewer of its rank it sends, with a
   message when it adapts.
+- **Laser sight.** A thin red line from the muzzle along the line of fire (up to 260 pixels, ending at a wall, crag or bug,
+  with a small dot). Settings: off, enhanced (the default: only in the enhanced game) or always.
 - **Walkable ground.** The arms' collision maps are cleaned so that nothing thin, no tiny pocket and no unreachable
   corner is left to catch on, and crags keep clear of the cliffs. Anything (player or bug) that ends up inside rock,
   shoved there by a swarm, a blast or a burst, is put on the nearest open ground at once.
@@ -87,7 +89,7 @@ The main menu has **play classic game** (the original, untouched) and **play enh
 
 ## Settings (menu: game settings)
 
-Controls (twin stick / classic tank), frame limit (20, 30 or 60 fps; the game logic keeps its own 60 Hz timer, so a
+Controls (twin stick / classic tank), laser sight (off / enhanced / always), frame limit (20, 30 or 60 fps; the game logic keeps its own 60 Hz timer, so a
 lower limit only makes the picture less smooth), credits on exit (on / off) and music volume. Left/right or the
 select button change a row. They are saved in `.formido/formido.cfg` as `controls`, `frame_limit` and
 `credits_on_exit`. Select + Start always leaves at once, without the credits. The settings panel uses
