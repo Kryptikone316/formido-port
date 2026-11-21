@@ -504,6 +504,8 @@ void start_game() {
 #endif
 #ifdef FORMIDO_TESTHOOKS
 	bool fast_forward = getenv("FORMIDO_FAST") != NULL;		// bot runs: no drawing, no pacing, three ticks per pass
+	if(fast_forward)
+		timer_frozen = true;			// exactly three ticks per pass, whatever the speed of the machine
 #endif
 	while(!main_loop_done) {
 #ifdef FORMIDO_TESTHOOKS

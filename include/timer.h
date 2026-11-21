@@ -31,6 +31,7 @@ extern int timer_count;
 
 // Is the game paused?
 extern bool game_paused;
+extern bool timer_frozen;
 
 void start_timer(int fps);
 void kill_timer();

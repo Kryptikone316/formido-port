@@ -38,8 +38,10 @@ bool game_paused;
 
 
 // Timer callback
+bool timer_frozen = false;		// test builds: bot runs set the ticks themselves
+
 Uint32 timer_callback(Uint32 interval, void *param) {
-	if(!game_paused)
+	if(!game_paused && !timer_frozen)
 		timer_count++;
 	return interval;
 }
