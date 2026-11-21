@@ -2601,6 +2601,41 @@ static void tyrant_draw_over(SDL_Surface *bmp) {
 
 #define MAX_PHANTOMS	6
 
+// Spores: now and then a phantom leaves a spore pod. It is a mushroom with a different look: the same effect when picked up.
+// Guards against an endless chain: at most one spore around, a modest chance, it rots in 25 s, and taking one locks out spore
+// drops for 150 seconds (the effect itself lasts 10 to 15).
+#define SPORE_CHANCE	0.12f
+#define SPORE_LIFE		(60 * 25)
+#define SPORE_LOCKOUT	(60 * 150)
+static bool spore_ok = false;
+static float spore_x = 0, spore_y = 0;
+static int spore_life = 0;
+static long spore_lock_until = 0;
+static SDL_Surface *spore_spr = NULL, *spore_glow = NULL;
+
+static void make_spore_sprite() {
+	if(spore_spr)
+		return;
+	const int S = 26;
+	spore_spr = SDL_CreateRGBSurface(SDL_SWSURFACE, S, S, 16, 0xf800, 0x07e0, 0x001f, 0);
+	Uint32 key = SDL_MapRGB(spore_spr->format, 255, 0, 255);
+	SDL_FillRect(spore_spr, NULL, key);
+	for(int y=0; y<S; y++) for(int x=0; x<S; x++) {
+		float dx = x - S / 2.0f + 0.5f, dy = y - S / 2.0f + 0.5f, d = sqrtf(dx * dx + dy * dy);
+		if(d > 11.5f) continue;
+		// a round pod with a bright rim, a few pale spots and a tiny stalk-less glow: nothing like the red-capped mushroom
+		float lit = 0.75f + 0.45f * (-dx * 0.5f - dy * 0.6f) / 12.0f;
+		int r = (int)(40 * lit), g = (int)(190 * lit), b = (int)(170 * lit);
+		if(d > 9.0f) { r = 20; g = 90; b = 110; }
+		int hh = (x * 7 + y * 11) % 23;
+		if(d < 8.0f && (hh == 0 || hh == 9)) { r = 230; g = 255; b = 240; }
+		*(Uint16 *)((Uint8 *)spore_spr->pixels + y * spore_spr->pitch + x * 2) = (Uint16)SDL_MapRGB(spore_spr->format,
+			r > 255 ? 255 : r, g > 255 ? 255 : g, b > 255 ? 255 : b);
+	}
+	SDL_SetColorKey(spore_spr, SDL_SRCCOLORKEY, key);
+	spore_glow = make_glow_rgb(80, 235, 205, 56, 130.0f);
+}
+
 static int phantom_timer = 0;
 static bool phantoms_out = false;
 
@@ -2614,9 +2649,34 @@ void enhanced_phantom_slain(float x, float y) {
 		add_particle(x, y, RANDF(-2.5, 2.5), RANDF(-2.5, 2.5), 150, 80, 240, (RAND(10,24)));
 	if(RANDF(0, 1) < 0.30f)
 		spawn_heal_plant_at(x, y);
+	else if(!spore_ok && enhanced_ticks >= spore_lock_until && RANDF(0, 1) < SPORE_CHANCE) {
+		float sx = x, sy = y;
+		enhanced_unstick(&sx, &sy);
+		spore_ok = true;
+		spore_x = sx;
+		spore_y = sy;
+		spore_life = SPORE_LIFE;
+	}
 }
 
 static void phantom_update() {
+	if(spore_ok) {
+		if(--spore_life <= 0)
+			spore_ok = false;
+		else if(player.ok && distance(player.x, player.y, spore_x, spore_y) < 24) {
+			spore_ok = false;
+			// the same as the mushroom: full health, the screen-warping effect, bugs bite less
+			player.drugs = (RAND(10, 15)) * 60;
+			player.health = 200;
+			prev_health = player.health;
+			spore_lock_until = enhanced_ticks + SPORE_LOCKOUT;
+			if(config.sound)
+				Mix_PlayChannel(-1, snd_mushroom, 0);
+			for(int k=0; k<24; k++)
+				add_particle(player.x, player.y, RANDF(-2.5, 2.5), RANDF(-2.5, 2.5), 80, 235, 205, (RAND(18,40)));
+			set_message("spores: the visions return");
+		}
+	}
 	bool tripping = player.ok && player.drugs > 0;
 	if(tripping) {
 		if(--phantom_timer <= 0) {
@@ -2810,6 +2870,7 @@ void enhanced_shift(float dx, float dy) {
 	kit.x += dx; kit.y += dy;
 	bunker.x += dx; bunker.y += dy;
 	trap_shift(dx, dy);
+	spore_x += dx; spore_y += dy;
 	for(int i=0; i<MAX_ACID; i++) { acid[i].x += dx; acid[i].y += dy; }
 	ty_x += dx; ty_y += dy;
 	shift_critters(dx, dy);
@@ -3042,6 +3103,9 @@ void enhanced_begin() {
 	stat_tyrants = 0;
 	phantom_timer = 60;
 	phantoms_out = false;
+	spore_ok = false;
+	spore_lock_until = 0;
+	make_spore_sprite();
 	player_burn = player_bleed = player_slow = 0;
 	ty_phase = TY_WAITING;
 	ty_next = 60 * 60 * 8;
@@ -3101,6 +3165,12 @@ void enhanced_begin() {
 		hplant_timer = 1;
 	if(getenv("FORMIDO_HURT"))			// start hurt
 		player.health = atoi(getenv("FORMIDO_HURT"));
+	if(getenv("FORMIDO_SPORE")) {		// a spore pod lies beside the player
+		spore_ok = true;
+		spore_x = player.x + 50;
+		spore_y = player.y + 20;
+		spore_life = SPORE_LIFE;
+	}
 	if(getenv("FORMIDO_MUSH"))			// start under the mushroom's effect
 		player.drugs = atoi(getenv("FORMIDO_MUSH")) * 60;
 	if(getenv("FORMIDO_TYRANT"))		// the Tyrant stirs soon (4 s of warning)
@@ -3247,6 +3317,12 @@ static void draw_world_overlays(SDL_Surface *bmp) {
 		src.x = frame * 80; src.y = 0; src.w = 80; src.h = 80;
 		dst.x = (int)hplant[i].x - 40; dst.y = (int)hplant[i].y - 62; dst.w = 80; dst.h = 80;
 		SDL_BlitSurface(hplant_img, &src, bmp, &dst);
+	}
+
+	// a spore pod
+	if(spore_ok && spore_spr && (spore_life > 180 || (spore_life / 7) % 2 == 0)) {
+		blit_center(bmp, spore_glow, (int)spore_x, (int)spore_y);
+		blit_center(bmp, spore_spr, (int)spore_x, (int)(spore_y + sinf(enhanced_ticks * 0.1f) * 2.0f));
 	}
 
 	// special ammunition lying about
