@@ -1333,7 +1333,7 @@ bool enhanced_bunker_absorb(int damage) {
 void enhanced_guardian_killed(float x, float y, int type) {
 	if(bunker_anything())
 		return;
-	float chance = (type == CT_BRUTE) ? 0.30f : 0.06f;			// rare; the warden is the best bet
+	float chance = (type == CT_BRUTE) ? (1.0f / 3.0f) : 0.15f;	// rare, but it should turn up: the warden is the best bet
 	if(RANDF(0, 1) >= chance)
 		return;
 	float kx = x, ky = y;

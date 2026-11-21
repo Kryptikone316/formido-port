@@ -60,7 +60,7 @@ The main menu has **play classic game** (the original, untouched) and **play enh
   little less to the others. Each load is 160 rounds and spoils after 45 seconds, whichever comes first; then you shoot
   normally again. The hive notices what you fire: the longer you use one kind, the fewer of its rank it sends, with a
   message when it adapts.
-- **Bunker.** A rare kit that only a guardian can drop (about 6 % per guardian, 30 % for the warden; never more than
+- **Bunker.** A rare kit that only a guardian can drop (15 % per guardian, one in three for the warden; never more than
   one kit or bunker at a time). Walk over the kit to take it, then press **R1** to deploy the bunker a little ahead of
   you and step onto it. Inside you cannot walk, but you can turn, aim and fire out; you mend 3 hit points a second, and
   the bugs wear the bunker down instead of you (it takes about a third of each bite; 800 points of integrity, shown
