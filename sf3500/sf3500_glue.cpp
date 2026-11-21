@@ -490,11 +490,13 @@ static bool g_hw = false;
 static bool g_inited = false;
 static int g_in_game = 0;
 static bool g_twin = false;
+static bool g_enh = false;
 static long long g_last_present_ms = 0;
 static int g_frame_ms = 33; /* never present faster than ~30 fps: steadier picture and sound on this device */
 
 void sf3500_set_in_game(int in_game) { g_in_game = in_game; }
 void sf3500_set_twin_stick(int on) { g_twin = on != 0; }
+void sf3500_set_enhanced(int on) { g_enh = on != 0; }
 
 static bool g_cap_from_env = false;
 void sf3500_set_frame_cap(int fps)
@@ -531,7 +533,8 @@ enum Ctx {
     C_MATCH,    /* in a match, either scheme */
     C_MENU,     /* anywhere but a match */
     C_NOTWIN,   /* not (a match with the twin-stick scheme) */
-    C_TWIN      /* a match with the twin-stick scheme */
+    C_TWIN,     /* a match with the twin-stick scheme, classic game (R1 fires along the aim) */
+    C_ENH       /* a match of the enhanced game (R1 deploys the bunker) */
 };
 
 struct KeyMap {
@@ -559,6 +562,7 @@ static const KeyMap g_map[] = {
     { JK_B,      SDLK_RSHIFT, C_NOTWIN, 0 },
     { JK_B,      SDLK_ESCAPE, C_MENU,   0 },
     { JK_R1,     SDLK_RCTRL,  C_TWIN,   0 },
+    { JK_R1,     SDLK_r,      C_ENH,    0 },
     { JK_START,  SDLK_p,      C_MATCH,  0 },
     { JK_START,  SDLK_RETURN, C_MENU,   0 },
     { JK_SELECT, SDLK_ESCAPE, C_ALWAYS, 0 },
@@ -679,7 +683,8 @@ static void pad_update(void)
         case C_MATCH:  if (!g_in_game) active = false; break;
         case C_MENU:   if (g_in_game) active = false; break;
         case C_NOTWIN: if (twin) active = false; break;
-        case C_TWIN:   if (!twin) active = false; break;
+        case C_TWIN:   if (!twin || g_enh) active = false; break;
+        case C_ENH:    if (!(g_in_game && g_enh)) active = false; break;
         default: break;
         }
         if (active != g_down[i]) {

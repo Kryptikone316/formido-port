@@ -305,6 +305,11 @@ void draw(SDL_Surface *bmp) {
 	// Draw the power-ups
 	draw_power_ups(bmp);
 
+#ifdef SF3500
+	if(enhanced)
+		enhanced_draw_under(bmp);
+#endif
+
 	// Draw the critters
 	draw_critters(bmp);
 
@@ -493,6 +498,7 @@ void start_game() {
 	bool f12_down = false;
 #ifdef SF3500
 	sf3500_set_twin_stick(config.controls == 1);
+	sf3500_set_enhanced(enhanced ? 1 : 0);
 	sf3500_set_in_game(1);
 #endif
 	while(!main_loop_done) {

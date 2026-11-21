@@ -34,6 +34,9 @@ void sf3500_set_frame_cap(int fps);
 /* Select + Start was pressed: the player wants out at once (no credits). */
 int sf3500_quit_requested(void);
 
+/* The enhanced game is on (1) or the classic one (0): R1 deploys the bunker instead of firing. */
+void sf3500_set_enhanced(int on);
+
 /* Which control scheme a match uses (1 = twin-stick, 0 = the original tank controls). */
 void sf3500_set_twin_stick(int on);
 

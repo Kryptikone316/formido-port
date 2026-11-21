@@ -531,7 +531,7 @@ void PLAYER::move() {
 		int ax = (key[SDLK_l] ? 1 : 0) - (key[SDLK_j] ? 1 : 0);
 		int ay = (key[SDLK_k] ? 1 : 0) - (key[SDLK_i] ? 1 : 0);
 
-		if(mx || my) {
+		if((mx || my) && !enhanced_in_bunker()) {
 			float l = (mx && my) ? 0.7071f : 1.0f;
 			l *= enhanced_player_speed();
 			dirx += mx * 2 * l;
@@ -574,7 +574,10 @@ void PLAYER::move() {
 		angle = add_angle(angle, 6);
 	
 	// Walking forward/backward
-	if(key[key_up])
+	if(enhanced && enhanced_in_bunker()) {
+		// in the bunker: turning is fine, walking is not
+	}
+	else if(key[key_up])
 		move_xy(2 * (enhanced ? enhanced_player_speed() : 1.0f), angle, &dirx, &diry);
 	else if(key[key_down])
 		move_xy(-1, angle, &dirx,&diry);

@@ -84,6 +84,13 @@ bool enhanced_burrower_update(CRITTER *c);
 bool enhanced_guard_alert(int arm);
 bool enhanced_guard_resting(CRITTER *c);
 
+// Bunker kits and the bunker: a guardian may drop a kit (rare); R1 deploys it; the player steps in, cannot move, fires out,
+// mends a little and the bugs wear the bunker down instead of the player; it blows up lightly when it is breached.
+void enhanced_guardian_killed(float x, float y, int type);
+bool enhanced_in_bunker();
+bool enhanced_bunker_absorb(int damage);		// true when the player is inside: the damage goes to the bunker
+void enhanced_draw_under(SDL_Surface *bmp);		// the bunker's floor and the kit lying about, drawn under bugs and player
+
 // Laser sight: a thin red line from the muzzle along the line of fire (called when the scene is drawn; shows
 // according to the laser_sight setting)
 void laser_sight_draw(SDL_Surface *bmp);

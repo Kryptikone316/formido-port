@@ -1101,7 +1101,7 @@ bool enhanced_burrower_update(CRITTER *c) {
 				r.w = crater_spr->w;
 				r.h = crater_spr->h;
 				SDL_BlitSurface(crater_spr, NULL, cur_bground, &r);
-				if(player.ok && distance(c->x, c->y, player.x, player.y) < 56) {
+				if(player.ok && distance(c->x, c->y, player.x, player.y) < 56 && !enhanced_bunker_absorb(25)) {
 					player.health -= 25;
 					if(player.health <= 0)
 						player.die();
@@ -1167,6 +1167,297 @@ static void burrow_update(int here) {
 		spawn_burrower(here);
 }
 
+
+///////////////////////////////////////////////////////////////////////////////
+// Bunker: a rare kit, dropped by guardians in the arms (never more than one kit or bunker at a time). R1 deploys it
+// a little ahead of the player; stepping onto it puts the player inside: no walking, but aiming and firing out, a
+// light regeneration, and the bugs wear the bunker down instead of the player. It lasts until its integrity is gone
+// (it also fatigues slowly, and an empty bunker crumbles after a while); then it goes off like a small mine, which
+// clears the bugs crowding it, and the player is free.
+
+static void blit_center(SDL_Surface *bmp, SDL_Surface *sp, int x, int y);
+static void rect(SDL_Surface *bmp, int x, int y, int w, int h, int r, int g, int b);
+
+#define BUNKER_INTEGRITY	800.0f
+#define BUNKER_ABSORB		0.35f			// share of a bite that reaches it (it is built to take them)
+#define BUNKER_FATIGUE		0.4f			// integrity lost per second regardless
+#define BUNKER_ENTER		22
+#define BUNKER_IDLE_TICKS	(60 * 90)
+#define BLAST_RADIUS		125.0f
+#define BLAST_DAMAGE		190.0f
+
+struct BUNKER {
+	bool ok;
+	float x, y;
+	float integrity;
+	bool inside;
+	int idle;
+};
+struct KIT {
+	bool ok;
+	float x, y;
+	int life;
+};
+static BUNKER bunker;
+static KIT kit;
+static bool kit_carried = false;
+static bool r_prev = false;
+static int bunker_regen = 0;
+static SDL_Surface *kit_spr = NULL, *bunker_floor = NULL, *bunker_ring[3] = { NULL, NULL, NULL };
+
+bool enhanced_in_bunker() {
+	return bunker.ok && bunker.inside;
+}
+
+static bool bunker_anything() {
+	return kit.ok || kit_carried || bunker.ok;
+}
+
+static SDL_Surface *make_kit_sprite() {
+	const int W_ = 30, H_ = 22;
+	SDL_Surface *sp = SDL_CreateRGBSurface(SDL_SWSURFACE, W_, H_, 16, 0xf800, 0x07e0, 0x001f, 0);
+	Uint32 key = SDL_MapRGB(sp->format, 255, 0, 255);
+	SDL_FillRect(sp, NULL, key);
+	for(int y=1; y<H_-1; y++) {
+		for(int x=1; x<W_-1; x++) {
+			int r, g, b;
+			if(x < 3 || y < 3 || x >= W_ - 3 || y >= H_ - 3) { r = 24; g = 30; b = 22; }
+			else { float lit = 0.85f + 0.25f * (1.0f - (float)y / H_); r = (int)(86 * lit); g = (int)(104 * lit); b = (int)(70 * lit); }
+			// a small white dome: the bunker
+			float dx = x - W_ / 2.0f, dy = y - (H_ / 2.0f + 3);
+			if(dy <= 0 && dx * dx + dy * dy < 60 && dy > -8) { r = 230; g = 230; b = 220; }
+			if(dy > 0 && dy < 3 && fabsf(dx) < 8) { r = 190; g = 190; b = 180; }
+			*(Uint16 *)((Uint8 *)sp->pixels + y * sp->pitch + x * 2) = (Uint16)SDL_MapRGB(sp->format, r, g, b);
+		}
+	}
+	SDL_SetColorKey(sp, SDL_SRCCOLORKEY, key);
+	return sp;
+}
+
+static void make_bunker_sprites() {
+	if(bunker_floor)
+		return;
+	kit_spr = make_kit_sprite();
+	// the floor: a round slab under the player
+	{
+		const int S = 60;
+		bunker_floor = SDL_CreateRGBSurface(SDL_SWSURFACE, S, S, 16, 0xf800, 0x07e0, 0x001f, 0);
+		Uint32 key = SDL_MapRGB(bunker_floor->format, 255, 0, 255);
+		SDL_FillRect(bunker_floor, NULL, key);
+		for(int y=0; y<S; y++) for(int x=0; x<S; x++) {
+			float dx = x - S / 2.0f + 0.5f, dy = y - S / 2.0f + 0.5f, d = sqrtf(dx * dx + dy * dy);
+			if(d > 29.5f) continue;
+			float n = 0.9f + 0.1f * sinf(x * 0.9f) * cosf(y * 1.3f);
+			int v = (int)(96 * n);
+			*(Uint16 *)((Uint8 *)bunker_floor->pixels + y * bunker_floor->pitch + x * 2) = (Uint16)SDL_MapRGB(bunker_floor->format, v, v - 4, v - 10);
+		}
+		SDL_SetColorKey(bunker_floor, SDL_SRCCOLORKEY, key);
+	}
+	// the ring of sandbags and concrete, in three states of repair; the inside stays see-through
+	for(int st=0; st<3; st++) {
+		const int S = 68;
+		SDL_Surface *r = SDL_CreateRGBSurface(SDL_SWSURFACE, S, S, 16, 0xf800, 0x07e0, 0x001f, 0);
+		Uint32 key = SDL_MapRGB(r->format, 255, 0, 255);
+		SDL_FillRect(r, NULL, key);
+		for(int y=0; y<S; y++) for(int x=0; x<S; x++) {
+			float dx = x - S / 2.0f + 0.5f, dy = y - S / 2.0f + 0.5f, d = sqrtf(dx * dx + dy * dy);
+			if(d > 33.0f || d < 22.0f) continue;
+			float ang = atan2f(dy, dx);
+			int seg = (int)((ang + 3.14159265f) / (6.2831853f / 14));
+			float segshade = 0.82f + 0.18f * ((seg & 1) ? 1.0f : 0.0f);
+			float edge = (d > 31.0f || d < 24.0f) ? 0.7f : 1.0f;			// darker lip
+			float lit = 0.8f + 0.3f * (-dx * 0.5f - dy * 0.6f) / 33.0f;
+			float base = 118.0f * segshade * edge * lit;
+			float rr = base, gg = base * 0.97f, bb = base * 0.86f;
+			if(st >= 1) { rr *= 1.00f; gg *= 0.86f; bb *= 0.72f; }			// scorched
+			if(st == 2) { rr *= 0.92f; gg *= 0.78f; bb *= 0.7f; }
+			// cracks
+			int hash = (x * 7 + y * 13 + seg * 5) % 17;
+			if(st >= 1 && hash == 0) { rr *= 0.35f; gg *= 0.35f; bb *= 0.35f; }
+			if(st == 2 && (hash == 3 || hash == 7)) { rr *= 0.3f; gg *= 0.3f; bb *= 0.3f; }
+			*(Uint16 *)((Uint8 *)r->pixels + y * r->pitch + x * 2) = (Uint16)SDL_MapRGB(r->format,
+				(int)fminf(rr, 255), (int)fminf(gg, 255), (int)fminf(bb, 255));
+		}
+		SDL_SetColorKey(r, SDL_SRCCOLORKEY, key);
+		bunker_ring[st] = r;
+	}
+}
+
+// the bunker goes off like a small mine: bugs near it are hurt (the player, in the middle, is not)
+static void bunker_blast(float x, float y) {
+	create_explosion((int)x, (int)y, (RAND(0,1)), 0.5f);
+	if(config.sound)
+		Mix_PlayChannel(-1, snd_explo[(RAND(0,1))], 0);
+	make_crater_sprite();
+	SDL_Rect r;
+	r.x = (int)x - crater_spr->w / 2;
+	r.y = (int)y - crater_spr->h / 2;
+	r.w = crater_spr->w;
+	r.h = crater_spr->h;
+	SDL_BlitSurface(crater_spr, NULL, cur_bground, &r);
+	for(int k=0; k<24; k++)
+		add_particle(x, y, RANDF(-3.2, 3.2), RANDF(-3.2, 3.2), RAND(200,255), RAND(120,200), RAND(40,90), RAND(12,30));
+	CRITTER *c = critter_first;
+	while(c) {
+		CRITTER *next = c->next;
+		if(!c->remove && !c->hidden) {
+			float d = distance(c->x, c->y, x, y);
+			if(d <= BLAST_RADIUS) {
+				float f = 1.0f - d / BLAST_RADIUS;
+				int dam = (int)(BLAST_DAMAGE * f);
+				float ang = compute_angle(c->x, c->y, x, y);
+				if(dam > 0) {
+					c->health -= dam;
+					if(c->health <= 0)
+						c->die(ang);
+				}
+				float px, py;
+				move_xy(RANDF(6, 8) * f / ctype_stats[c->type].mass, ang, &px, &py);
+				c->dirx += px;
+				c->diry += py;
+			}
+		}
+		c = next;
+	}
+}
+
+bool enhanced_bunker_absorb(int damage) {
+	if(!enhanced_in_bunker())
+		return false;
+	bunker.integrity -= damage * BUNKER_ABSORB;
+	if(RAND(0,5) == 0)
+		add_particle(bunker.x + RANDF(-24, 24), bunker.y + RANDF(-24, 24), RANDF(-1.2, 1.2), RANDF(-1.2, 0.4), 255, RAND(180,230), 80, RAND(5,10));
+	return true;
+}
+
+void enhanced_guardian_killed(float x, float y, int type) {
+	if(bunker_anything())
+		return;
+	float chance = (type == CT_BRUTE) ? 0.30f : 0.06f;			// rare; the warden is the best bet
+	if(RANDF(0, 1) >= chance)
+		return;
+	float kx = x, ky = y;
+	enhanced_unstick(&kx, &ky);
+	kit.ok = true;
+	kit.x = kx;
+	kit.y = ky;
+	kit.life = 60 * 120;
+	set_message("the guardian dropped a bunker kit");
+}
+
+static void bunker_deploy() {
+	float dx, dy;
+	move_xy(1.0f, add_angle(player.angle, -60), &dx, &dy);		// the way the player aims
+	static const int DIST[5] = { 52, 44, 36, 28, 0 };
+	for(int i=0; i<5; i++) {
+		float x = player.x + dx * DIST[i], y = player.y + dy * DIST[i];
+		if(world_blocked((int)x, (int)y, false) || world_blocked((int)x + 20, (int)y, false) || world_blocked((int)x - 20, (int)y, false) ||
+		   world_blocked((int)x, (int)y + 20, false) || world_blocked((int)x, (int)y - 20, false))
+			continue;
+		bunker.ok = true;
+		bunker.x = x;
+		bunker.y = y;
+		bunker.integrity = BUNKER_INTEGRITY;
+#ifdef FORMIDO_TESTHOOKS
+		if(getenv("FORMIDO_BUNKERHP"))
+			bunker.integrity = (float)atoi(getenv("FORMIDO_BUNKERHP"));
+#endif
+		bunker.inside = false;
+		bunker.idle = 0;
+		kit_carried = false;
+		set_message("bunker ready: step inside");
+		if(config.sound)
+			Mix_PlayChannel(-1, snd_power_up, 0);
+		return;
+	}
+	set_message("no room to deploy the bunker here");
+}
+
+static void bunker_update() {
+	bool r = key[SDLK_r] != 0;
+	if(r && !r_prev && kit_carried && !bunker.ok && player.ok)
+		bunker_deploy();
+	r_prev = r;
+
+	if(kit.ok) {
+		if(--kit.life <= 0)
+			kit.ok = false;
+		else if(player.ok && !kit_carried && !bunker.ok && distance(player.x, player.y, kit.x, kit.y) < 26) {
+			kit_carried = true;
+			kit.ok = false;
+			set_message("bunker kit: press R1 to deploy it");
+			if(config.sound)
+				Mix_PlayChannel(-1, snd_power_up, 0);
+		}
+	}
+
+	if(!bunker.ok)
+		return;
+
+	bool expired = false;
+	if(!player.ok)
+		bunker.inside = false;
+	if(!bunker.inside) {
+		if(player.ok && distance(player.x, player.y, bunker.x, bunker.y) < BUNKER_ENTER) {
+			bunker.inside = true;
+			bunker_regen = 0;
+			set_message("inside the bunker: fire away");
+		}
+		else if(++bunker.idle > BUNKER_IDLE_TICKS)
+			expired = true;
+	}
+	if(bunker.inside) {
+		player.x = bunker.x;
+		player.y = bunker.y;
+		player.sx = player.x;
+		player.sy = player.y;
+		player.dirx = player.diry = 0;
+		if(++bunker_regen >= 20) {					// a light regeneration
+			bunker_regen = 0;
+			if(player.health < 200) {
+				player.health++;
+				prev_health = player.health;
+			}
+		}
+	}
+	bunker.integrity -= BUNKER_FATIGUE / 60.0f;
+	if(bunker.integrity <= 0)
+		expired = true;
+	if(expired) {
+		bunker_blast(bunker.x, bunker.y);
+		if(bunker.inside)
+			set_message("the bunker is breached: it goes up");
+		bunker.ok = false;
+		bunker.inside = false;
+	}
+}
+
+void enhanced_draw_under(SDL_Surface *bmp) {
+	if(!bunker_floor)
+		return;
+	if(kit.ok && (kit.life > 240 || (kit.life / 8) % 2 == 0)) {
+		blit_center(bmp, glow_spr[3], (int)kit.x, (int)kit.y);
+		blit_center(bmp, kit_spr, (int)kit.x, (int)kit.y);
+	}
+	if(bunker.ok)
+		blit_center(bmp, bunker_floor, (int)bunker.x, (int)bunker.y);
+}
+
+static void bunker_draw_over(SDL_Surface *bmp) {
+	if(!bunker_floor)
+		return;
+	if(bunker.ok) {
+		float f = bunker.integrity / BUNKER_INTEGRITY;
+		blit_center(bmp, bunker_ring[f > 0.6f ? 0 : (f > 0.3f ? 1 : 2)], (int)bunker.x, (int)bunker.y);
+		// its integrity, over the ring
+		int w = 46, filled = (int)(w * (f < 0 ? 0 : f));
+		rect(bmp, (int)bunker.x - w / 2 - 1, (int)bunker.y - 42, w + 2, 6, 14, 14, 12);
+		rect(bmp, (int)bunker.x - w / 2, (int)bunker.y - 41, w, 4, 60, 40, 30);
+		rect(bmp, (int)bunker.x - w / 2, (int)bunker.y - 41, filled, 4, f > 0.5f ? 120 : 230, f > 0.5f ? 220 : 150, 70);
+	}
+	if(kit_carried)
+		blit_center(bmp, kit_spr, (int)player.x + 22, (int)player.y - 34);
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 // Special ammunition, found in the arms: about double damage against one rank, a little less against the rest
@@ -1315,6 +1606,8 @@ void enhanced_shift(float dx, float dy) {
 		abox[i].x += dx;
 		abox[i].y += dy;
 	}
+	kit.x += dx; kit.y += dy;
+	bunker.x += dx; bunker.y += dy;
 	shift_critters(dx, dy);
 	shift_gibs(dx, dy);
 	shift_bombs(dx, dy);
@@ -1412,7 +1705,7 @@ void enhanced_update() {
 	}
 
 	// 2a. thorns: a scratch on touching them, and one now and then while standing in them
-	if(player.ok) {
+	if(player.ok && !enhanced_in_bunker()) {
 		int px = (int)player.x, py = (int)player.y;
 		bool in = world_thorns(px, py) || world_thorns(px + 9, py) || world_thorns(px - 9, py) ||
 			world_thorns(px, py + 9) || world_thorns(px, py - 9);
@@ -1434,6 +1727,7 @@ void enhanced_update() {
 	ammo_update(cell_index(gx, gy));
 	burrow_update(cell_index(gx, gy));
 	heal_plant_update(cell_index(gx, gy));
+	bunker_update();
 
 	// 3. the hive watches
 	if(enhanced_ticks % 60 == 0)
@@ -1513,6 +1807,12 @@ void enhanced_begin() {
 	hplant_messages = 0;
 	thorn_out = 100;
 	thorn_hit = 0;
+	make_bunker_sprites();
+	kit.ok = false;
+	kit_carried = false;
+	bunker.ok = false;
+	bunker.inside = false;
+	r_prev = false;
 	for(int i=0; i<5; i++) {
 		need_guards[i] = (i > 0);
 		sealed[i] = (i > 0);
@@ -1550,6 +1850,8 @@ void enhanced_begin() {
 		hplant_timer = 1;
 	if(getenv("FORMIDO_HURT"))			// start hurt
 		player.health = atoi(getenv("FORMIDO_HURT"));
+	if(getenv("FORMIDO_KIT"))			// start carrying a bunker kit
+		kit_carried = true;
 	if(getenv("FORMIDO_BURROW"))		// a burrower soon, in whichever arm the player is in
 		burrow_timer = 60;
 	if(getenv("FORMIDO_AMMO")) {		// start with special rounds, and have a crate drop soon
@@ -1675,6 +1977,8 @@ static void draw_world_overlays(SDL_Surface *bmp) {
 		if(abox[i].ok && (abox[i].life > 180 || (abox[i].life / 6) % 2 == 0))
 			blit_center(bmp, ammo_spr[abox[i].type], (int)abox[i].x, (int)abox[i].y);
 	}
+
+	bunker_draw_over(bmp);
 
 	// the cell the player carries
 	if(carrying)

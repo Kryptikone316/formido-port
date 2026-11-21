@@ -16,7 +16,7 @@ the A/B/X/Y buttons, so holding **L1** turns them into the aiming stick.
 | D-pad (left stick) | walk in the direction pressed (8 ways); you face the way you walk |
 | L1 + X / A / B / Y | aim and fire up / right / down / left; two face buttons together aim diagonally; you can walk one way and fire another |
 | A (without L1) | fire along the current aim |
-| R1 | fire along the current aim |
+| R1 | fire along the current aim (in the enhanced game: deploy the bunker) |
 | B (without L1) | special (throw the power-up you hold, in the aim direction) |
 | Start | pause |
 | Select | end the match |
@@ -60,6 +60,13 @@ The main menu has **play classic game** (the original, untouched) and **play enh
   little less to the others. Each load is 160 rounds and spoils after 45 seconds, whichever comes first; then you shoot
   normally again. The hive notices what you fire: the longer you use one kind, the fewer of its rank it sends, with a
   message when it adapts.
+- **Bunker.** A rare kit that only a guardian can drop (about 6 % per guardian, 30 % for the warden; never more than
+  one kit or bunker at a time). Walk over the kit to take it, then press **R1** to deploy the bunker a little ahead of
+  you and step onto it. Inside you cannot walk, but you can turn, aim and fire out; you mend 3 hit points a second, and
+  the bugs wear the bunker down instead of you (it takes about a third of each bite; 800 points of integrity, shown
+  as a bar, and it fatigues slowly on its own; an empty bunker crumbles after 90 seconds). When it expires it goes off
+  like a small mine and hurts the bugs crowding it, so you are never trapped, and you carry on normally. In the enhanced
+  game R1 is the bunker button, so A (without L1) is the way to fire along the aim.
 - **Laser sight.** A thin red line from the muzzle along the line of fire (up to 260 pixels, ending at a wall, crag or bug,
   with a small dot). Settings: off, enhanced (the default: only in the enhanced game) or always.
 - **Walkable ground.** The arms' collision maps are cleaned so that nothing thin, no tiny pocket and no unreachable

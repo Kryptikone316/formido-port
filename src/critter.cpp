@@ -425,6 +425,13 @@ void CRITTER::move() {
 #else
 	if(rects_collide(x-16, y-16, 32,32, player.x-20, player.y-20, 40,40)) {
 #endif
+#ifdef SF3500
+		if(enhanced && enhanced_bunker_absorb(bite)) {		// the player is in the bunker: it takes the bites
+			x = sx;
+			y = sy;
+		}
+		else {
+#endif
 		player.blood(RAND(1,2), add_angle(angle, RANDF(-5,5)));
 
 		x = sx;
@@ -447,6 +454,9 @@ void CRITTER::move() {
 
 		if(player.health <= 0)
 			player.die();
+#ifdef SF3500
+		}
+#endif
 	}
 
 	dirx *= 0.8;
@@ -486,6 +496,8 @@ void CRITTER::die(float bul_angle) {
 	remove = true;
 
 #ifdef SF3500
+	if(enhanced && guard)
+		enhanced_guardian_killed(x, y, type);
 	kills += enhanced ? ctype_stats[type].score : 1;
 #else
 	kills++;
