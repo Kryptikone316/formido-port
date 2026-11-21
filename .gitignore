@@ -1,0 +1,4 @@
+obj-sf3500*/
+*.mipsel
+run/
+package/
