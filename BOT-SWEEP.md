@@ -50,3 +50,19 @@ combo_F_health.5_fire3_spa  60      334   501.0  185-483    576  7200       348 
 ```
 
 Reading: bug health, time between shots and the spawn schedule are the strong levers; bug speed and bite damage are modest; contact_speed, max_roaming_bugs and the runner weight barely move a platform-bound bot. Stacked changes multiply: half bug health with a 3-tick fire delay and a 4x slower spawn schedule reaches a median of about 4.7 minutes and meets the first Hive Tyrant in about 1 game in 5, but a few games at those settings never end (cut off at 2 hours), i.e. the loss stops being inevitable. The published chart page is the Artifact 'Formido Knob Sweep'.
+
+## First Tyrant earlier (sweep3.sh, 60 games per row, same seeds)
+
+| Settings | First Tyrant | Median survived | Met a Tyrant | Slain | Died within a minute of it arriving |
+|---|---|---|---|---|---|
+| default | 8 min | 55 s | 0 % | 0 | n/a |
+| default | 5 min | 55 s | 0 % | 0 | n/a |
+| default | 1 min | 55 s | 22 % | 0 | 85 % |
+| D (half health, 3-tick fire, 4x spawn delay) | 8 min | 280 s | 17 % | 2 | 80 % |
+| D | 5 min | 280 s | 40 % | 3 of 24 | 79 % |
+| F (D + speed 0.85 + damage 0.75) | 8 min | 334 s | 20 % | 3 | 42 % |
+| F | 5 min | 334 s | 53 % | 13 of 32 | 50 % |
+| F | 3 min | 238 s | 70 % | 22 of 42 | 36 % |
+
+At the default settings nobody lives to 5 minutes, so moving the Tyrant from 8 to 5 minutes changes nothing; it only matters at
+settings where bots survive that long, where it doubles to triples the share that meet one without changing the median.
