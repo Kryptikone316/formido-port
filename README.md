@@ -50,7 +50,10 @@ The main menu has **play classic game** (the original, untouched) and **play enh
   north = the north pylon becomes an automatic turret, east = bombs and mines are dropped on the platform,
   south = a medbay (the platform heals fast), west = a slowing field around the platform.
   Carrying slows you a little. After a delivery the cell comes back after 100 to 160 seconds, in a new place, with
-  fresh guardians that grow stronger the longer the match has gone on.
+  fresh guardians that grow stronger the longer the match has gone on. How strong a garrison is changes every time
+  (fewer or more guardians, tougher or weaker, quicker or slower); the map shows one to three pips under each arm's
+  dot, so you can pick the easier cell, or come back later when the guard has changed. Individual bugs vary too:
+  every bug's health and speed are rolled within a range, so no two are the same.
 - **Bug ranks.** Drone (the classic bug), runner (small, fast, in packs), striker (tough, hits harder), brute (huge,
   slow). They are the classic bug's pictures scaled and recoloured. They appear as the match goes on.
 - **The hive adapts.** It watches how you play: standing still brings heavier bugs, running around brings fast

@@ -352,7 +352,7 @@ void CRITTER::move() {
 			ty = hy;
 		}
 		angle = compute_angle(tx,ty,x,y);
-		walk_accel = ctype_stats[type].accel * enhanced_bug_speed(x, y);
+		walk_accel = ctype_stats[type].accel * enhanced_bug_speed(x, y) * spd;
 		bite = ctype_stats[type].dmg;
 	}
 	else
@@ -563,6 +563,7 @@ void CRITTER::clear() {
 	maxhp = 100;
 	hs = 16;
 	guard = 0;
+	spd = 1.0f;
 	hx = hy = 0;
 	ok = true;
 	remove = false;

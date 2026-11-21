@@ -267,9 +267,11 @@ void critter_set_type(CRITTER *c, int type) {
 		if(t > 900) t = 900;
 		mul += 0.6f * t / 900.0f;		// the hive's bugs toughen slowly
 	}
-	c->maxhp = (int)(ctype_stats[type].hp * mul);
+	// no two bugs are quite the same: health +-15 %, speed +-10 %
+	c->maxhp = (int)(ctype_stats[type].hp * mul * RANDF(0.85f, 1.15f));
 	c->health = c->maxhp;
 	c->hs = ctype_stats[type].hs;
+	c->spd = RANDF(0.9f, 1.1f);
 }
 
 
@@ -471,6 +473,16 @@ static POWERCELL pcell[5];
 static bool need_guards[5];		// the arm's guardians have yet to be placed (first visit, or after the cell was delivered)
 static bool sealed[5];			// the cell cannot be taken: guardians alive or not yet placed
 static bool alert[5];			// the arm's guardians are awake
+static float garrison[5];		// how strong this time's guardians are: 0.7 (light) .. 1.4 (heavy)
+
+static void roll_garrison(int i) {
+	garrison[i] = RANDF(0.7f, 1.4f);
+}
+
+// 1 light, 2 average, 3 heavy: shown on the map next to the arm
+static int garrison_level(int i) {
+	return garrison[i] < 0.9f ? 1 : (garrison[i] < 1.15f ? 2 : 3);
+}
 static int carrying = 0;			// arm of the cell the player carries, 0 for none
 static int mode = 0;				// arm of the cell that set the pylons' mode, 0 for none
 static long mode_until = 0;
@@ -603,6 +615,14 @@ static void spawn_cell_guards(int arm) {
 	plan[CT_STRIKER] += (mins / 2 > 3) ? 3 : mins / 2;		// they grow with the match
 	if(mins >= 8 && plan[CT_BRUTE] > 0)
 		plan[CT_BRUTE]++;
+	float f = garrison[arm];
+	for(int k=0; k<4; k++) {
+		if(plan[k] > 0) {
+			plan[k] = (int)(plan[k] * f + 0.5f);
+			if(plan[k] < 1)
+				plan[k] = 1;
+		}
+	}
 	float cx = pcell[arm].lx + (CELL_GX[arm] - gx) * CELL_W;
 	float cy = pcell[arm].ly + (CELL_GY[arm] - gy) * CELL_H;
 	bool warden = true;
@@ -625,11 +645,13 @@ static void spawn_cell_guards(int arm) {
 					continue;
 				CRITTER *c = add_critter(x, y, RANDF(0, 359));
 				critter_set_type(c, type);
+				c->maxhp = (int)(c->maxhp * f);						// a heavy garrison is tougher and quicker
+				c->spd *= 0.9f + 0.1f * f;
 				if(type == CT_BRUTE && warden) {
 					c->maxhp = c->maxhp * 3 / 2;
-					c->health = c->maxhp;
 					warden = false;
 				}
+				c->health = c->maxhp;
 				c->guard = arm;
 				c->hx = x;
 				c->hy = y;
@@ -694,10 +716,12 @@ static void cells_update(int here) {
 		if(!pcell[i].present && enhanced_ticks >= pcell[i].back_tick && !carrying_arm_is(i)) {
 			pcell[i].present = true;
 			need_guards[i] = true;
-			place_cell(i);					// a new spot every time
+			roll_garrison(i);				// a different garrison...
+			place_cell(i);					// ...in a new spot every time
 			if(i != here) {
+				static const char *WORD[4] = { "", "light", "average", "heavy" };
 				char buf[64];
-				snprintf(buf, sizeof(buf), "a new %s cell has formed", DIR_NAME[i]);
+				snprintf(buf, sizeof(buf), "a new %s cell has formed: %s guard", DIR_NAME[i], WORD[garrison_level(i)]);
 				set_message(buf);
 			}
 		}
@@ -951,6 +975,9 @@ void enhanced_begin() {
 		need_guards[i] = (i > 0);
 		sealed[i] = (i > 0);
 		alert[i] = false;
+		garrison[i] = 1.0f;
+		if(i > 0)
+			roll_garrison(i);
 	}
 	carrying = 0;
 	mode = 0;
@@ -1068,8 +1095,13 @@ void enhanced_draw(SDL_Surface *bmp) {
 		int cx = ox + (CELL_GX[i] + 1) * (CW + GAP) + CW / 2 - 2;
 		int cy = oy + (CELL_GY[i] + 1) * (CH + GAP) + CH / 2 - 2;
 		rect(bmp, cx, cy, 4, 4, ARM_COL[i][0], ARM_COL[i][1], ARM_COL[i][2]);
-		if(sealed[i])
+		if(sealed[i]) {
 			rect(bmp, cx + 1, cy + 1, 2, 2, 20, 16, 14);
+			// how heavy the guard is: one to three pips under the dot
+			int lv = garrison_level(i);
+			for(int k=0; k<lv; k++)
+				rect(bmp, cx - (lv - 1) + k * 3, cy + 6, 2, 2, lv == 3 ? 255 : 230, lv == 3 ? 90 : 230, lv == 3 ? 70 : 220);
+		}
 	}
 	// the player
 	{
