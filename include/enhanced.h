@@ -33,7 +33,8 @@ extern bool enhanced;
 #define CT_BRUTE	3	// huge and slow
 #define CT_BURROWER	4	// hides under the sand of the arms and erupts under the player
 #define CT_TYRANT	5	// the Hive Tyrant: an elite boss that turns up after a long time
-#define NUM_CTYPES	6
+#define CT_PHANTOM	6	// a hallucination: only exists while the mushroom is working
+#define NUM_CTYPES	7
 
 struct CRITTER_STATS {
 	int hp;				// health
@@ -102,6 +103,8 @@ int enhanced_reload();											// ticks between shots (shorter with the boon)
 
 // The legend (L2): pauses the game and shows what the icons mean; any button goes on
 void enhanced_show_legend();
+void enhanced_phantom_slain(float x, float y);	// a hallucination was killed: it may leave a healing plant
+bool enhanced_phantom_hidden(CRITTER *c);		// phantoms flicker: skipped in this frame's drawing
 void enhanced_bug_killed(int type);			// counts kills per rank for the stats strip
 
 // Laser sight: a thin red line from the muzzle along the line of fire (called when the scene is drawn; shows

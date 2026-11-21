@@ -95,6 +95,10 @@ The main menu has **play classic game** (the original, untouched) and **play enh
   rock blocks in its four corners where the arms' cliffs meet it, so the boundary is visible and nothing invisible catches
   you; the open way into each arm is the middle of the edge.
 - **Reset Hall of Fame.** In game settings, "reset hall of fame": press select once to be asked, again to erase both lists.
+- **Hallucinations.** While the mushroom's effect lasts (the screen-warping one), violet, flickering phantoms appear
+  around you every 2 to 4 seconds, up to 6 at once. They are slow-witted but bite like real bugs (60 health, 2 damage), and
+  they vanish the instant the effect ends. Killing one has a 30 % chance to leave a (half-size) healing plant where it
+  fell, so the mushroom is not a pure penalty. They are not afraid of the Tyrant and do not count as its screen.
 - **Bunker.** A rare kit that only a guardian can drop (15 % per guardian, one in three for the warden; never more than
   one kit or bunker at a time). Walk over the kit to take it, then press **R1** to deploy the bunker a little ahead of
   you and step onto it. Inside you cannot walk, but you can turn, aim and fire out; you mend 3 hit points a second, and

@@ -41,6 +41,7 @@ const CRITTER_STATS ctype_stats[NUM_CTYPES] = {
 	{ 700, 0.17f, 2, 28, 4.5f, 8 },	// brute
 	{ 240, 0.50f, 2, 17, 1.5f, 4 },	// burrower
 	{ 4500, 0.14f, 3, 40, 12.0f, 100 },	// Hive Tyrant
+	{ 60, 0.42f, 2, 16, 0.8f, 1 },		// phantom (hallucination)
 };
 
 SDL_Surface *ctype_gfx[NUM_CTYPES][3][35];
@@ -228,8 +229,9 @@ static const int RAMP[NUM_CTYPES][3][3] = {
 	{ {14,18,30}, {62,76,104}, {156,170,196} },			// brute: dark steel blue
 	{ {22,14,10}, {112,86,60}, {232,216,184} },			// burrower: dark earth and bone
 	{ {44,6,28}, {150,28,62}, {255,206,96} },			// Hive Tyrant: dark crimson with gold
+	{ {40,10,90}, {150,70,230}, {120,255,230} },		// phantom: violet with a cyan glare
 };
-static const float SCALE[NUM_CTYPES] = { 1.0f, 0.70f, 1.12f, 1.70f, 1.20f, 2.30f };
+static const float SCALE[NUM_CTYPES] = { 1.0f, 0.70f, 1.12f, 1.70f, 1.20f, 2.30f, 1.0f };
 
 static SDL_Surface *make_variant(SDL_Surface *src, int type) {
 	float scale = SCALE[type];
@@ -457,6 +459,7 @@ static int pick_type() {
 	w[CT_DRONE] = 100.0f;
 	w[CT_BURROWER] = 0;
 	w[CT_TYRANT] = 0;
+	w[CT_PHANTOM] = 0;
 	w[CT_RUNNER] = (t < 20) ? 0 : (t - 20) * 0.6f; if(w[CT_RUNNER] > 40) w[CT_RUNNER] = 40;
 	w[CT_STRIKER] = (t < 50) ? 0 : (t - 50) * 0.5f; if(w[CT_STRIKER] > 30) w[CT_STRIKER] = 30;
 	w[CT_BRUTE] = (t < 100) ? 0 : (t - 100) * 0.25f; if(w[CT_BRUTE] > 14) w[CT_BRUTE] = 14;
@@ -967,6 +970,7 @@ static bool hplant_ready = false;
 static int hplant_messages = 0;
 static SDL_Surface *hplant_img = NULL;		// four frames, 80 x 80 each
 
+void spawn_heal_plant_at(float x, float y);
 static bool spawn_heal_plant(int here) {
 	int slot = -1;
 	for(int i=0; i<MAX_HEAL_PLANTS; i++) {
@@ -1007,6 +1011,22 @@ static bool spawn_heal_plant(int here) {
 		return true;
 	}
 	return false;
+}
+
+void spawn_heal_plant_at(float x, float y) {
+	if(!hplant_img)
+		return;
+	int slot = -1;
+	for(int i=0; i<MAX_HEAL_PLANTS; i++) {
+		if(!hplant[i].ok) { slot = i; break; }
+	}
+	if(slot < 0 || world_blocked((int)x, (int)y, false))
+		return;
+	hplant[slot].x = x;
+	hplant[slot].y = y;
+	hplant[slot].pool = HEAL_POOL / 2;			// a smaller one: it grew out of a vision
+	hplant[slot].life = HEAL_LIFE;
+	hplant[slot].ok = true;
 }
 
 static void heal_plant_update(int here) {
@@ -1221,6 +1241,7 @@ static void rect(SDL_Surface *bmp, int x, int y, int w, int h, int r, int g, int
 #define NUM_TRAPS	3
 static void traps_draw_under(SDL_Surface *bmp);
 static void tyrant_draw_under(SDL_Surface *bmp);
+void spawn_heal_plant_at(float x, float y);
 
 #define BUNKER_INTEGRITY	800.0f
 #define BUNKER_ABSORB		0.35f			// share of a bite that reaches it (it is built to take them)
@@ -2122,7 +2143,7 @@ static bool has_mut(int m) {
 
 // the weak run away, the strong stand in front of it
 int enhanced_bug_mode(CRITTER *c) {
-	if(!ty_alive || c->type == CT_TYRANT || c->guard || c->brood || c->hidden || c->type == CT_BURROWER)
+	if(!ty_alive || c->type == CT_TYRANT || c->guard || c->brood || c->hidden || c->type == CT_BURROWER || c->type == CT_PHANTOM)
 		return 0;
 	if(c->type == CT_DRONE || c->type == CT_RUNNER)
 		return 1;
@@ -2574,6 +2595,67 @@ static void tyrant_draw_over(SDL_Surface *bmp) {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+// Hallucinations: while the mushroom's effect (player.drugs) lasts, phantoms appear around the player. They look like
+// flickering violet bugs and bite like real ones, but vanish the moment the effect ends. Killing one may leave a healing
+// plant where it fell, so eating the mushroom is not a pure penalty.
+
+#define MAX_PHANTOMS	6
+
+static int phantom_timer = 0;
+static bool phantoms_out = false;
+
+bool enhanced_phantom_hidden(CRITTER *c) {
+	// a flicker: gone for a few ticks now and then, out of step between phantoms
+	return ((enhanced_ticks / 3 + (long)(c->maxhp & 7) * 5) % 11) == 0;
+}
+
+void enhanced_phantom_slain(float x, float y) {
+	for(int k=0; k<12; k++)
+		add_particle(x, y, RANDF(-2.5, 2.5), RANDF(-2.5, 2.5), 150, 80, 240, (RAND(10,24)));
+	if(RANDF(0, 1) < 0.30f)
+		spawn_heal_plant_at(x, y);
+}
+
+static void phantom_update() {
+	bool tripping = player.ok && player.drugs > 0;
+	if(tripping) {
+		if(--phantom_timer <= 0) {
+			phantom_timer = 60 * (RAND(2, 4));
+			int n = 0;
+			for(CRITTER *c = critter_first; c; c = c->next)
+				if(c->type == CT_PHANTOM && !c->remove)
+					n++;
+			if(n < MAX_PHANTOMS) {
+				for(int tries=0; tries<40; tries++) {
+					float a = RANDF(0, 6.2831853f), r = RANDF(210, 340);
+					float x = player.x + cosf(a) * r, y = player.y + sinf(a) * r * 0.8f;
+					if(world_blocked((int)x, (int)y, false) || world_blocked((int)x + 12, (int)y, false) || world_blocked((int)x - 12, (int)y, false))
+						continue;
+					CRITTER *c = add_critter(x, y, 0);
+					critter_set_type(c, CT_PHANTOM);
+					for(int k=0; k<8; k++)
+						add_particle(x, y, RANDF(-1.8, 1.8), RANDF(-1.8, 1.8), 150, 80, 240, (RAND(10,22)));
+					phantoms_out = true;
+					break;
+				}
+			}
+		}
+	}
+	else if(phantoms_out) {
+		// the effect is over: they were never there
+		phantoms_out = false;
+		for(CRITTER *c = critter_first; c; c = c->next) {
+			if(c->type == CT_PHANTOM && !c->remove) {
+				c->remove = true;
+				for(int k=0; k<10; k++)
+					add_particle(c->x, c->y, RANDF(-1.5, 1.5), RANDF(-1.5, 1.5), 150, 80, 240, (RAND(10,24)));
+			}
+		}
+		phantom_timer = 60;
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////////
 // Special ammunition, found in the arms: about double damage against one rank, a little less against the rest
 
 struct AMMO_BOX {
@@ -2792,6 +2874,13 @@ void enhanced_update() {
 #ifdef FORMIDO_TESTHOOKS
 	if(getenv("FORMIDO_HPLOG") && enhanced_ticks % (atoi(getenv("FORMIDO_HPLOG")) > 1 ? atoi(getenv("FORMIDO_HPLOG")) : 60) == 0)
 		fprintf(stderr, "tick %ld hp %d at %d,%d blocked %d thorn %d cell %d,%d\n", enhanced_ticks, player.health, (int)player.x, (int)player.y, (int)world_blocked((int)player.x, (int)player.y, false), (int)world_thorns((int)player.x, (int)player.y), gx, gy);
+	if(getenv("FORMIDO_HPLOG") && enhanced_ticks % 60 == 0) {
+		int n = 0;
+		for(CRITTER *c = critter_first; c; c = c->next)
+			if(c->type == CT_PHANTOM && !c->remove)
+				n++;
+		fprintf(stderr, "phantoms %d drugs %d\n", n, player.drugs);
+	}
 #endif
 
 #ifdef FORMIDO_TESTHOOKS
@@ -2857,6 +2946,7 @@ void enhanced_update() {
 	bunker_update();
 	trap_update(cell_index(gx, gy));
 	tyrant_update();
+	phantom_update();
 	player_status_tick();
 	if(player.ok && player.health <= 0)
 		player.die();
@@ -2950,6 +3040,8 @@ void enhanced_begin() {
 		stat_kills[i] = 0;
 	stat_cells = 0;
 	stat_tyrants = 0;
+	phantom_timer = 60;
+	phantoms_out = false;
 	player_burn = player_bleed = player_slow = 0;
 	ty_phase = TY_WAITING;
 	ty_next = 60 * 60 * 8;
@@ -3009,6 +3101,8 @@ void enhanced_begin() {
 		hplant_timer = 1;
 	if(getenv("FORMIDO_HURT"))			// start hurt
 		player.health = atoi(getenv("FORMIDO_HURT"));
+	if(getenv("FORMIDO_MUSH"))			// start under the mushroom's effect
+		player.drugs = atoi(getenv("FORMIDO_MUSH")) * 60;
 	if(getenv("FORMIDO_TYRANT"))		// the Tyrant stirs soon (4 s of warning)
 		ty_next = enhanced_ticks + 60 * 2;
 	if(getenv("FORMIDO_TRAP")) {		// start with traps: 0 napalm, 1 spikes
