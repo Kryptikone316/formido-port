@@ -21,6 +21,7 @@
 #include "critter.h"
 #include "powerup.h"
 #include "particle.h"
+#include "explo.h"
 #include "mymath.h"
 #include "font.h"
 #include "enhanced.h"
@@ -33,6 +34,7 @@ const CRITTER_STATS ctype_stats[NUM_CTYPES] = {
 	{  40, 0.58f, 1, 11, 0.6f, 1 },	// runner
 	{ 220, 0.33f, 2, 18, 1.8f, 3 },	// striker
 	{ 700, 0.17f, 2, 28, 4.5f, 8 },	// brute
+	{ 240, 0.50f, 2, 17, 1.5f, 4 },	// burrower
 };
 
 SDL_Surface *ctype_gfx[NUM_CTYPES][3][35];
@@ -177,8 +179,9 @@ static const int RAMP[NUM_CTYPES][3][3] = {
 	{ {70,46,14}, {196,156,58}, {252,230,140} },		// runner: pale desert yellow
 	{ {16,13,14}, {92,74,22}, {236,192,44} },			// striker: black with yellow
 	{ {14,18,30}, {62,76,104}, {156,170,196} },			// brute: dark steel blue
+	{ {22,14,10}, {112,86,60}, {232,216,184} },			// burrower: dark earth and bone
 };
-static const float SCALE[NUM_CTYPES] = { 1.0f, 0.70f, 1.12f, 1.70f };
+static const float SCALE[NUM_CTYPES] = { 1.0f, 0.70f, 1.12f, 1.70f, 1.20f };
 
 static SDL_Surface *make_variant(SDL_Surface *src, int type) {
 	float scale = SCALE[type];
@@ -294,16 +297,17 @@ static int msg_timer = 0;
 // special ammunition: type = the bug rank it is made against
 #define AMMO_ROUNDS 160			// about 13 seconds of continuous fire
 #define AMMO_SECONDS 45			// ...and the rounds spoil after this long, fired or not
-static const char *AMMO_NAME[NUM_CTYPES] = { "hollow-point", "flechette", "incendiary", "armour-piercing" };
-static const char *RANK_NAME[NUM_CTYPES] = { "drones", "runners", "strikers", "brutes" };
-static const int AMMO_COL[NUM_CTYPES][3] = { {214,96,60}, {250,226,120}, {236,176,40}, {130,164,224} };
-static const float AMMO_BONUS[NUM_CTYPES] = { 2.0f, 2.2f, 1.9f, 2.1f };
+#define NUM_AMMO 4			// one kind of rounds for each of the first four ranks
+static const char *AMMO_NAME[NUM_AMMO] = { "hollow-point", "flechette", "incendiary", "armour-piercing" };
+static const char *RANK_NAME[NUM_AMMO] = { "drones", "runners", "strikers", "brutes" };
+static const int AMMO_COL[NUM_AMMO][3] = { {214,96,60}, {250,226,120}, {236,176,40}, {130,164,224} };
+static const float AMMO_BONUS[NUM_AMMO] = { 2.0f, 2.2f, 1.9f, 2.1f };
 static int ammo_type = -1;					// the rounds the player has loaded, -1 for the standard ones
 static int ammo_left = 0;
 static long ammo_until = 0;					// tick at which the rounds run out whatever is left
-static float ammo_recent[NUM_CTYPES];		// how much of each kind was fired lately: the hive notices
-static float ammo_counter[NUM_CTYPES];		// 0..1: how hard the hive pulls that rank back
-static bool ammo_counter_on[NUM_CTYPES];
+static float ammo_recent[NUM_AMMO];		// how much of each kind was fired lately: the hive notices
+static float ammo_counter[NUM_AMMO];		// 0..1: how hard the hive pulls that rank back
+static bool ammo_counter_on[NUM_AMMO];
 
 static long arm_last_loot[5];
 static int arm_timer[5];
@@ -352,7 +356,7 @@ static void director_sample() {
 		adapt_low = 1;
 
 	// the hive notices which rounds are being fired and starts to hold that rank back
-	for(int r=0; r<NUM_CTYPES; r++) {
+	for(int r=0; r<NUM_AMMO; r++) {
 		ammo_recent[r] *= 0.9f;
 		float c = (ammo_recent[r] - 30.0f) / 120.0f;
 		ammo_counter[r] = c < 0 ? 0 : (c > 1 ? 1 : c);
@@ -390,6 +394,7 @@ static int pick_type() {
 	float t = (float)(enhanced_ticks / 60);
 	float w[NUM_CTYPES];
 	w[CT_DRONE] = 100.0f;
+	w[CT_BURROWER] = 0;
 	w[CT_RUNNER] = (t < 20) ? 0 : (t - 20) * 0.6f; if(w[CT_RUNNER] > 40) w[CT_RUNNER] = 40;
 	w[CT_STRIKER] = (t < 50) ? 0 : (t - 50) * 0.5f; if(w[CT_STRIKER] > 30) w[CT_STRIKER] = 30;
 	w[CT_BRUTE] = (t < 100) ? 0 : (t - 100) * 0.25f; if(w[CT_BRUTE] > 14) w[CT_BRUTE] = 14;
@@ -401,7 +406,7 @@ static int pick_type() {
 	if(adapt_bombs) { w[CT_RUNNER] *= 1.8f; w[CT_STRIKER] *= 1.3f; }
 	if(adapt_low) { w[CT_RUNNER] *= 1.6f; }
 
-	for(int i=0; i<NUM_CTYPES; i++)
+	for(int i=0; i<NUM_AMMO; i++)
 		w[i] *= 1.0f - 0.7f * ammo_counter[i];
 
 	float sum = 0;
@@ -718,7 +723,7 @@ static void turret_fire(float px, float py) {
 	CRITTER *best = NULL;
 	float bd = 250;
 	for(CRITTER *c = critter_first; c; c = c->next) {
-		if(c->remove || c->health <= 0)
+		if(c->remove || c->health <= 0 || c->hidden)
 			continue;
 		float d = distance(c->x, c->y, px, py);
 		if(d < bd) {
@@ -864,6 +869,170 @@ static void cells_update(int here) {
 
 
 ///////////////////////////////////////////////////////////////////////////////
+// Burrowers: hide in the sand of the arms (never the centre screen), creep towards the player under the surface,
+// rumble when close, erupt, then fight like any bug. They dive again when the player leaves the arm.
+
+static int burrow_timer = 0;
+static int rumble_messages = 0;
+static SDL_Surface *crater_spr = NULL;
+
+static void make_crater_sprite() {
+	if(crater_spr)
+		return;
+	const int S = 56;
+	crater_spr = SDL_CreateRGBSurface(SDL_SWSURFACE, S, S, 32, 0xff, 0xff00, 0xff0000, 0xff000000);
+	for(int y=0; y<S; y++) {
+		for(int x=0; x<S; x++) {
+			float dx = (x - S / 2.0f + 0.5f) / (S / 2.0f), dy = (y - S / 2.0f + 0.5f) / (S / 2.0f) * 1.2f;
+			float d = sqrtf(dx * dx + dy * dy);
+			float a = d >= 1.0f ? 0.0f : (d < 0.55f ? 0.62f : 0.62f * (1.0f - d) / 0.45f);
+			Uint8 *p = (Uint8 *)crater_spr->pixels + y * crater_spr->pitch + x * 4;
+			p[0] = 20; p[1] = 12; p[2] = 6;
+			p[3] = (Uint8)(a * 255);
+		}
+	}
+}
+
+static int cell_of_critter(CRITTER *c) {
+	return cell_index(gx + fdiv((int)c->x, CELL_W), gy + fdiv((int)c->y, CELL_H));
+}
+
+static void dust_puff(float x, float y, int n, float spread) {
+	for(int k=0; k<n; k++)
+		add_particle(x + RANDF(-6, 6), y + RANDF(-4, 4), RANDF(-spread, spread), RANDF(-spread, spread * 0.3f), RAND(150,190), RAND(105,135), RAND(60,80), RAND(10,26));
+}
+
+bool enhanced_burrower_update(CRITTER *c) {
+	int cc = cell_of_critter(c);
+	int pc = cell_index(gx + fdiv((int)player.x, CELL_W), gy + fdiv((int)player.y, CELL_H));
+	bool with_player = player.ok && cc > 0 && cc == pc;
+
+	switch(c->bstate) {
+		case 0: {		// hiding, and slowly creeping towards the player
+			c->hidden = true;
+			if(!with_player)
+				return true;
+			float d = distance(c->x, c->y, player.x, player.y);
+			if(d < 135 && c->btimer <= 0) {
+				c->bstate = 1;
+				c->btimer = 50;
+				if(rumble_messages < 3) {
+					rumble_messages++;
+					set_message("the ground trembles");
+				}
+				return true;
+			}
+			if(c->btimer > 0)
+				c->btimer--;
+			// creep: about a third of the player's speed, only through free sand
+			float a = compute_angle(player.x, player.y, c->x, c->y);
+			float mx, my;
+			move_xy(1.0f, a, &mx, &my);
+			if(!world_blocked((int)(c->x + mx * 4), (int)(c->y + my * 4), false)) {
+				c->x += mx;
+				c->y += my;
+			}
+			// the faint trail of a thing moving under the surface
+			if(enhanced_ticks % 22 == 0 && d < 330)
+				dust_puff(c->x, c->y, 2, 0.3f);
+			return true;
+		}
+		case 1: {		// rumbling: dust builds, it tracks the player quickly, then breaks out
+			c->hidden = true;
+			if(!with_player) {
+				c->bstate = 0;
+				c->btimer = 60 * RAND(5, 9);
+				return true;
+			}
+			float a = compute_angle(player.x, player.y, c->x, c->y);
+			float mx, my;
+			move_xy(2.2f, a, &mx, &my);
+			if(!world_blocked((int)(c->x + mx * 3), (int)(c->y + my * 3), false)) {
+				c->x += mx;
+				c->y += my;
+			}
+			dust_puff(c->x, c->y, 1, 0.9f);
+			if(--c->btimer <= 0) {
+				// eruption
+				c->hidden = false;
+				c->bstate = 2;
+				c->btimer = 0;
+				dust_puff(c->x, c->y, 22, 3.0f);
+				make_crater_sprite();
+				SDL_Rect r;
+				r.x = (int)c->x - crater_spr->w / 2;
+				r.y = (int)c->y - crater_spr->h / 2;
+				r.w = crater_spr->w;
+				r.h = crater_spr->h;
+				SDL_BlitSurface(crater_spr, NULL, cur_bground, &r);
+				if(player.ok && distance(c->x, c->y, player.x, player.y) < 56) {
+					player.health -= 25;
+					if(player.health <= 0)
+						player.die();
+					float kx, ky;
+					move_xy(7.0f, compute_angle(player.x, player.y, c->x, c->y), &kx, &ky);		// away from the burst
+					player.dirx += kx;
+					player.diry += ky;
+				}
+				if(config.sound)
+					Mix_PlayChannel(-1, snd_explo[1], 0);
+			}
+			return true;
+		}
+		default: {		// up and fighting; goes back under when the player leaves the arm
+			if(!with_player || distance(c->x, c->y, player.x, player.y) > 560) {
+				c->bstate = 0;
+				c->hidden = true;
+				c->btimer = 60 * RAND(5, 9);
+				dust_puff(c->x, c->y, 8, 1.5f);
+				c->health = c->maxhp;
+				return true;
+			}
+			return false;
+		}
+	}
+}
+
+static int burrowers_in_cell(int ci) {
+	int n = 0;
+	for(CRITTER *c = critter_first; c; c = c->next)
+		if(c->type == CT_BURROWER && !c->remove && cell_of_critter(c) == ci)
+			n++;
+	return n;
+}
+
+static void spawn_burrower(int ci) {
+	for(int tries=0; tries<60; tries++) {
+		int lx = RAND(80, CELL_W - 80), ly = RAND(80, CELL_H - 80);
+		float x = (float)(lx + (CELL_GX[ci] - gx) * CELL_W), y = (float)(ly + (CELL_GY[ci] - gy) * CELL_H);
+		float d = distance(x, y, player.x, player.y);
+		if(d < 220 || d > 380)
+			continue;
+		if(world_blocked((int)x, (int)y, false) || world_blocked((int)x + 14, (int)y, false) || world_blocked((int)x - 14, (int)y, false) ||
+		   world_blocked((int)x, (int)y + 14, false) || world_blocked((int)x, (int)y - 14, false))
+			continue;
+		CRITTER *c = add_critter(x, y, 0);
+		critter_set_type(c, CT_BURROWER);
+		c->hidden = true;
+		c->bstate = 0;
+		c->btimer = 60 * RAND(2, 5);
+		return;
+	}
+}
+
+static void burrow_update(int here) {
+	if(here <= 0 || !player.ok || enhanced_ticks < 60 * 60)		// never in the centre; nothing in the first minute
+		return;
+	if(--burrow_timer > 0)
+		return;
+	burrow_timer = 60 * RAND(80, 140);							// few and far between
+	int allowed = (enhanced_ticks > 60 * 480) ? 2 : 1;
+	if(burrowers_in_cell(here) < allowed)
+		spawn_burrower(here);
+}
+
+
+///////////////////////////////////////////////////////////////////////////////
 // Special ammunition, found in the arms: about double damage against one rank, a little less against the rest
 
 struct AMMO_BOX {
@@ -875,7 +1044,7 @@ struct AMMO_BOX {
 #define MAX_AMMO_BOXES 4
 static AMMO_BOX abox[MAX_AMMO_BOXES];
 static int ammo_timer = 0;
-static SDL_Surface *ammo_spr[NUM_CTYPES];
+static SDL_Surface *ammo_spr[NUM_AMMO];
 
 float enhanced_ammo_mult(int rank) {
 	if(ammo_type < 0 || ammo_left <= 0)
@@ -948,7 +1117,7 @@ static void spawn_ammo_box(int here) {
 		if(distance((float)x, (float)y, cx, cy) < 90)
 			continue;
 		int t;
-		do { t = RAND(0, NUM_CTYPES - 1); } while(t == ammo_type);
+		do { t = RAND(0, NUM_AMMO - 1); } while(t == ammo_type);
 		abox[slot].x = (float)x;
 		abox[slot].y = (float)y;
 		abox[slot].type = t;
@@ -1097,6 +1266,7 @@ void enhanced_update() {
 	// 2b. power cells and what the pylons do
 	cells_update(cell_index(gx, gy));
 	ammo_update(cell_index(gx, gy));
+	burrow_update(cell_index(gx, gy));
 
 	// 3. the hive watches
 	if(enhanced_ticks % 60 == 0)
@@ -1151,7 +1321,7 @@ void enhanced_begin() {
 		arm_timer[i] = 0;
 	}
 	make_cell_sprites();
-	for(int i=0; i<NUM_CTYPES; i++) {
+	for(int i=0; i<NUM_AMMO; i++) {
 		if(!ammo_spr[i])
 			ammo_spr[i] = make_ammo_sprite(i);
 		ammo_recent[i] = 0;
@@ -1163,6 +1333,8 @@ void enhanced_begin() {
 	ammo_type = -1;
 	ammo_left = 0;
 	ammo_timer = 60 * RAND(32, 50);
+	burrow_timer = 60 * RAND(40, 80);
+	rumble_messages = 0;
 	for(int i=0; i<5; i++) {
 		need_guards[i] = (i > 0);
 		sealed[i] = (i > 0);
@@ -1178,8 +1350,15 @@ void enhanced_begin() {
 #ifdef FORMIDO_TESTHOOKS
 	for(int i=1; i<5; i++)
 		fprintf(stderr, "power cell %s at %d,%d\n", DIR_NAME[i], (int)pcell[i].lx, (int)pcell[i].ly);
+	if(getenv("FORMIDO_BURROW"))		// a burrower soon, in whichever arm the player is in
+		burrow_timer = 60;
+	if(getenv("FORMIDO_NOGUARD"))		// no guardians (to watch other things in an arm)
+		for(int i=1; i<5; i++) {
+			need_guards[i] = false;
+			sealed[i] = false;
+		}
 	if(getenv("FORMIDO_AMMO")) {		// start with special rounds, and have a crate drop soon
-		ammo_type = atoi(getenv("FORMIDO_AMMO")) % NUM_CTYPES;
+		ammo_type = atoi(getenv("FORMIDO_AMMO")) % NUM_AMMO;
 		ammo_left = 999;
 		ammo_until = enhanced_ticks + 60 * AMMO_SECONDS;
 		ammo_timer = 90;
@@ -1275,7 +1454,7 @@ void enhanced_draw(SDL_Surface *bmp) {
 	int cnt[5] = { 0, 0, 0, 0, 0 };
 	for(CRITTER *c = critter_first; c; c = c->next) {
 		int i = cell_index(gx + fdiv((int)c->x, CELL_W), gy + fdiv((int)c->y, CELL_H));
-		if(i >= 0 && !c->remove && !c->guard)
+		if(i >= 0 && !c->remove && !c->guard && !c->hidden)
 			cnt[i]++;
 	}
 	const int CW = 18, CH = 14, GAP = 2;

@@ -61,6 +61,9 @@ public:
 	int hs;						// Half size of the body for hits
 
 	float spd;					// Walking speed factor (garrisons vary a little)
+	bool hidden;				// Under the sand: not drawn, cannot be hit (burrowers)
+	int bstate;					// Burrower: 0 hiding, 1 rumbling, 2 up
+	int btimer;
 	int guard;					// Guardian of this arm's power cell (enhanced game), 0 for none
 	float hx, hy;				// ...and the spot it watches over
 

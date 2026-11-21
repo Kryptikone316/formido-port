@@ -267,7 +267,11 @@ bool critter_collisions(CRITTER *c) {
 
 	// Loop through all critters
 	while(temp) {
+#ifdef SF3500
+		if(temp != c && !temp->hidden) {
+#else
 		if(temp != c) {
+#endif
 			// Check for collisions
 
 			// First I used distance() to check the collision, but the
@@ -325,6 +329,9 @@ bool critter_collisions(CRITTER *c) {
 void CRITTER::move() {
 
 #ifdef SF3500
+	// a burrower under the sand creeps, rumbles and erupts on its own
+	if(enhanced && type == CT_BURROWER && enhanced_burrower_update(this))
+		return;
 	// a guardian that is at home and undisturbed just stands there
 	if(enhanced && guard && enhanced_guard_resting(this)) {
 		frame = 1;
@@ -501,6 +508,10 @@ void CRITTER::draw(SDL_Surface *bmp) {
 
 	if(!ok)
 		return;
+#ifdef SF3500
+	if(hidden)
+		return;
+#endif
 
 	// Choose the right angle
 	int a = (int)((float)(angle / 360.0) * 36);
@@ -564,6 +575,9 @@ void CRITTER::clear() {
 	hs = 16;
 	guard = 0;
 	spd = 1.0f;
+	hidden = false;
+	bstate = 0;
+	btimer = 0;
 	hx = hy = 0;
 	ok = true;
 	remove = false;

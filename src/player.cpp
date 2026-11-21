@@ -417,7 +417,7 @@ void PLAYER::shoot() {
 			while(temp) {
 				//if(distance(bx,by, temp->x, temp->y) < 26) {
 #ifdef SF3500
-				if(rects_collide(bx,by,1,1, temp->x-temp->hs, temp->y-temp->hs, 2*temp->hs,2*temp->hs)) {
+				if(!temp->hidden && rects_collide(bx,by,1,1, temp->x-temp->hs, temp->y-temp->hs, 2*temp->hs,2*temp->hs)) {
 #else
 				if(rects_collide(bx,by,1,1, temp->x-16, temp->y-16, 32,32)) {
 #endif

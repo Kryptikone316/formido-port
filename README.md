@@ -62,6 +62,13 @@ The main menu has **play classic game** (the original, untouched) and **play enh
   message when it adapts.
 - **Bug ranks.** Drone (the classic bug), runner (small, fast, in packs), striker (tough, hits harder), brute (huge,
   slow). They are the classic bug's pictures scaled and recoloured. They appear as the match goes on.
+- **Burrowers.** A fifth rank that lives under the sand of the arms (never in the centre screen, never near the
+  pylons). It is not drawn and cannot be hit while hidden. It creeps towards you under the surface, leaving only a
+  faint trail of dust, and when close it rumbles for under a second ("the ground trembles", dust building) and erupts at
+  the spot it reached: 25 damage and a shove if you are right on top of it, so a player who keeps moving is fine and one
+  who stands still, or is busy fighting, is not. After that it fights like a bug (earth-and-bone coloured, tougher than
+  a drone) and dives again, healed, if you leave the arm. They are rare: the first after about a minute of the match,
+  then at most one per arm (two after 8 minutes), a new one every 80 to 140 seconds while you are out in an arm.
 - **The hive adapts.** It watches how you play: standing still brings heavier bugs, running around brings fast
   swarms, throwing many bombs brings scattered swarms, low health brings runners; a short message tells you.
 - **The platform heals a little** when nothing has bitten for a while.

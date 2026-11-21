@@ -60,6 +60,12 @@ void explode_bomb(BOMB *b) {
 	CRITTER *temp = critter_first;
 
 	while(temp) {
+#ifdef SF3500
+		if(temp->hidden) {		// under the sand: the blast passes over
+			temp = temp->next;
+			continue;
+		}
+#endif
 		// Check distance
 		float dist = distance(temp->x, temp->y, b->x, b->y);
 
@@ -286,7 +292,7 @@ void BOMB::move() {
 		CRITTER *temp = critter_first;
 		while(temp) {
 #ifdef SF3500
-			if(rects_collide(x,y,1,1, temp->x-temp->hs, temp->y-temp->hs, 2*temp->hs,2*temp->hs)) {
+			if(!temp->hidden && rects_collide(x,y,1,1, temp->x-temp->hs, temp->y-temp->hs, 2*temp->hs,2*temp->hs)) {
 #else
 			if(rects_collide(x,y,1,1, temp->x-16, temp->y-16, 32,32)) {
 #endif

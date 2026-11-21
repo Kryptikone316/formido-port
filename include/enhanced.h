@@ -31,7 +31,8 @@ extern bool enhanced;
 #define CT_RUNNER	1	// small and fast, comes in packs
 #define CT_STRIKER	2	// tougher, hits harder
 #define CT_BRUTE	3	// huge and slow
-#define NUM_CTYPES	4
+#define CT_BURROWER	4	// hides under the sand of the arms and erupts under the player
+#define NUM_CTYPES	5
 
 struct CRITTER_STATS {
 	int hp;				// health
@@ -70,6 +71,10 @@ bool world_blocked(int x, int y, bool bullet);
 
 // Where a bug at (x,y) should walk to: the player, or the doorway to the centre screen
 void world_target(float x, float y, float *tx, float *ty);
+
+// Burrowers: called from CRITTER::move; returns true while the bug is under the sand (or erupting) and must not
+// move like a surface bug
+bool enhanced_burrower_update(CRITTER *c);
 
 // Guardians of the power cells: is the arm's guard alarmed, and may this guardian rest at its post?
 bool enhanced_guard_alert(int arm);
