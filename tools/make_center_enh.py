@@ -15,7 +15,7 @@ from scipy import ndimage as ndi
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from make_wasteland import fbm, light, W, H
 
-BLOCK = 80          # the open way into an arm is x (or y) in BLOCK .. size - BLOCK
+BLOCK = 72          # the open way into an arm is x (or y) in BLOCK .. size - BLOCK (was 80; 10 % smaller for the device screen)
 
 
 def main():
