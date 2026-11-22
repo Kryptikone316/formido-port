@@ -135,6 +135,8 @@ void enhanced_tracer(float x0, float y0, float x1, float y1);
 
 bool enhanced_flame_active();
 void enhanced_flame_fire();
+Mix_Chunk *enhanced_flame_chunk();		// the looping roar that replaces the gun's sound while it burns
+void enhanced_flame_ignite();			// the ignition thump, once when the flame starts
 
 // Special ammunition (dropped in the arms): damage factor of the player's current rounds against a bug rank,
 // to be called when a round is fired and when it hits

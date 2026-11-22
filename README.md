@@ -120,6 +120,9 @@ The main menu has **play classic game** (the original, untouched) and **play enh
   them burning, and is stopped by rock. It carries 7 seconds of fuel (of firing) and spoils 45 seconds after the pickup,
   fired or not; then the usual gun is back. Against the Hive Tyrant it does only 15 % of its damage. All of it is in
   `formido_tuning.cfg` (`flame_*`).
+- **Sounds.** The flamethrower has a roar of its own (a looping whoosh with crackles, and an ignition thump when it
+  starts), and the Hive Tyrant announces itself with a deep growling roar when it arrives. All three are synthesised
+  by `tools/make_sounds.py` (no samples), so they are easy to retune and carry no licence of their own.
 - **Laser sight.** A thin red line from the muzzle along the line of fire (up to 260 pixels, ending at a wall, crag or bug,
   with a small dot). Settings: off, enhanced (the default: only in the enhanced game) or always.
 - **No dead-end slots.** The arms' collision is cleaned so that every gap is at least body-wide (about 40 pixels): the

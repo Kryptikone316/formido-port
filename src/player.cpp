@@ -653,8 +653,29 @@ void PLAYER::move() {
 #endif
 
 		// Start shooting sound
+#ifdef SF3500
+		{
+			// the flamethrower roars instead of the gun's rattle; the sound is swapped when the weapon changes mid-burst
+			static bool shoot_is_flame = false;
+			bool flame_now = enhanced && enhanced_flame_active() && enhanced_flame_chunk();
+			if(shoot_chan != -1 && config.sound && shoot_is_flame != flame_now) {
+				Mix_HaltChannel(shoot_chan);
+				shoot_chan = -1;
+			}
+			if(shoot_chan == -1 && config.sound) {
+				if(flame_now) {
+					enhanced_flame_ignite();
+					shoot_chan = Mix_PlayChannel(-1, enhanced_flame_chunk(), -1);
+				}
+				else
+					shoot_chan = Mix_PlayChannel(-1, snd_shoot, -1);
+				shoot_is_flame = flame_now;
+			}
+		}
+#else
 		if(shoot_chan == -1 && config.sound)
 			shoot_chan = Mix_PlayChannel(-1, snd_shoot, -1);
+#endif
 
 		// Update panning
 		int pan = (int)(((float)x / (float)SCREEN_W) * 255);

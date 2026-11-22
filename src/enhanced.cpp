@@ -1985,6 +1985,30 @@ static SDL_Surface *flame_spr = NULL, *flame_glow = NULL;
 #ifdef FORMIDO_TESTHOOKS
 static int flame_hits = 0, flame_killed = 0;
 #endif
+// the flamethrower's roar and ignition, and the Tyrant's arrival: synthesised by tools/make_sounds.py, loaded when a match starts
+static Mix_Chunk *snd_flame = NULL, *snd_flame_start = NULL, *snd_tyrant_roar = NULL;
+
+static Mix_Chunk *load_enh_sound(const char *name) {
+	Mix_Chunk *c = Mix_LoadWAV_RW(SDL_RWFromFile(DAT((char *)name), "rb"), 1);
+	if(!c)
+		fprintf(stderr, "could not load %s\n", name);			// not fatal: the game is just quieter
+	return c;
+}
+
+static void enh_sounds_load() {
+	if(snd_flame)
+		return;
+	snd_flame = load_enh_sound("flame.dat");
+	snd_flame_start = load_enh_sound("flame_start.dat");
+	snd_tyrant_roar = load_enh_sound("tyrant_roar.dat");
+}
+
+Mix_Chunk *enhanced_flame_chunk() { return snd_flame; }
+void enhanced_flame_ignite() {
+	if(snd_flame_start && config.sound)
+		Mix_PlayChannel(-1, snd_flame_start, 0);
+}
+
 static bool flame_anything() {
 	return flame_pu.ok || flame_fuel > 0;
 }
@@ -2986,6 +3010,10 @@ static void tyrant_spawn() {
 	}
 	CRITTER *c = add_critter(bx, by, 0);
 	critter_set_type(c, CT_TYRANT);
+	if(snd_tyrant_roar && config.sound) {
+		int ch = Mix_PlayChannel(-1, snd_tyrant_roar, 0);
+		Mix_SetPanning(ch, 255, 255);
+	}
 #ifdef FORMIDO_TESTHOOKS
 	if(getenv("FORMIDO_TYRANTHP")) {
 		c->maxhp = atoi(getenv("FORMIDO_TYRANTHP"));
@@ -3739,6 +3767,7 @@ void enhanced_begin() {
 	thorn_hit = 0;
 	make_bunker_sprites();
 	flame_make_sprites();
+	enh_sounds_load();
 	make_trap_sprites();
 	make_badge_sprites();
 	for(int i=0; i<MAX_TRAPS; i++)
