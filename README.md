@@ -46,7 +46,7 @@ last and what you do with the time.
 
 - **A map shaped like a cross.** The stone platform is in the middle. Walk off any side to reach a wasteland to the north,
   east, south or west. A small map in the corner shows where you are and which screens have bugs in them.
-- **Power cells and the platform.** Each wasteland holds a power cell guarded by a warden and his escorts. Beat them, carry the
+- **Power cells and the platform.** Each wasteland holds a power cell guarded by a warden and its escorts. Beat them, carry the
   cell to the platform, and the four pylons change what they do: a turret, a supply of bombs and mines, a medbay that heals
   fast, or a slowing field. Cells come back after a while, in a new place, with new guards.
 - **Healing.** The platform mends you whenever you are hurt and standing on it, even while bugs bite. Rare green healing plants
