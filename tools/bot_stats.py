@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-or-later
 """Summarise bot runs: tools/bot_stats.py botruns/b1.txt botruns/b2.txt ... (RESULT lines from run_bots.sh)."""
 import re
 import sys

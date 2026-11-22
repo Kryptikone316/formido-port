@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 cd ~/handhelds/sf3000-work/formido
 D=botruns/menus
 mkdir -p $D/.formido

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 cd ~/handhelds/sf3000-work/formido
 mkdir -p botruns
 for tag in ${TAGS:-nonav nav}; do

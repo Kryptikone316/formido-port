@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-or-later
 """Make data/menu2_sf.dat and data/menu_sf.dat: Formido's menu backgrounds without their painted labels.
 
 The settings screen (menu2) has the key-binding labels painted into its panel; the main menu (menu) has the

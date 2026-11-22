@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
 # Mobile bot variants again, with the new default of no healing wait (platform_regen_delay_ticks 0).
 cd "$(dirname "$0")"
 while IFS='|' read -r label env tune; do

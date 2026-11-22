@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /* Stand-in for SDL_mixer's header on the Datafrog SF3500.
  *
  * The device has no SDL audio device (and no SDL_mixer library), so the few Mix_*

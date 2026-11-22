@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /* See joykey.hpp. Default bit table + optional keymap.txt override, same as
  * every other port on this device. */
 #include "joykey.hpp"

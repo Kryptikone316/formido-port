@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-or-later
 """Compare labelled bot batches: tools/lab_report.py label [label ...] (reads botruns/sweep/<label>.txt)."""
 import re, sys, statistics as st
 def load(lab):

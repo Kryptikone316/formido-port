@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /* Datafrog SF3500 glue for Formido.
  *
  *  - display: SDL runs on its "dummy" video driver (a plain software surface); every flip

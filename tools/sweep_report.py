@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-or-later
 """Summarise the knob sweep: reads botruns/sweep/<knob>=<value>.txt (and base.txt), prints tables, writes botruns/sweep.json."""
 import glob
 import json

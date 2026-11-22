@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-or-later
 """Make data/plant_green.dat: the healing plant of the enhanced game, four frames side by side (80 x 80 each,
 transparent background): healthy, yellowing, browning, withered. The game picks the frame from how much is left
 of the plant. Same drawing as the red thorn plants of make_wasteland.py, in green.

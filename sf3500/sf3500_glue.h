@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /* Datafrog SF3500 glue for Formido: display, gamepad, audio, image loading.
  * Everything the game needs from the device goes through the functions below;
  * init.h maps SDL_Flip / SDL_PollEvent onto sf3500_flip / sf3500_poll. */

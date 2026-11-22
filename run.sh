@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
 set -u
 
 PORT_DIR=/mnt/sdcard/roms/ports/formido

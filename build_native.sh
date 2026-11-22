@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
 # Native (x86-64) test build of the game with the test hooks, for bot runs on the host (much faster than QEMU).
 # Not for the device. Needs the host's libSDL-1.2 and the SDL headers from the cross sysroot.
 set -eu

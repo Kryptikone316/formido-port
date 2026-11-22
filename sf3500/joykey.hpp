@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /* Real gamepad input via cubevol's /tmp/joy_key shared memory - the same
  * mechanism picoarch/FrogUI/the stock apps use on this device. No uinput, no
  * SDL joystick enumeration. */

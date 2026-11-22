@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
 # Combined settings: the same 60 seeds as sweep.sh. Results: botruns/sweep/combo_<name>.txt
 cd "$(dirname "$0")"
 while IFS='|' read -r label tune; do

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-or-later
 """Collision stress test for the enhanced game's cross-shaped world.
 
 Reproduces the game's own movement rules (PLAYER::move in src/player.cpp, enhanced_unstick in src/enhanced.cpp) on the

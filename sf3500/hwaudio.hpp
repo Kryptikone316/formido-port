@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /* Real audio via driver_sf3500.so's sound_driver_* functions - see hwaudio.cpp
  * for the calling-convention and clean-cycle fixes (confirmed from
  * picoarch's own production source).

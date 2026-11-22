@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /* sf3000-hwdisp implementation. dlopen's driver_sf3500.so, calls video_driver_*.
  * Driver scales src dims -> panel via HCGE DMA.
  */

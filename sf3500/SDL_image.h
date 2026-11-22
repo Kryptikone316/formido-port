@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /* Stand-in for SDL_image's header on the Datafrog SF3500.
  *
  * Formido only calls IMG_Load and IMG_GetError. Its .dat files are PCX, PNG, JPEG and

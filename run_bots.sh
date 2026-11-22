@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
 # usage: run_bots.sh <native|mips> <batch> <skill> <first seed> <count> [parallel]
 # Plays bot games with the test build; one RESULT line per game goes to botruns/<batch>.txt (the per-minute lines to botruns/<batch>-min.txt).
 set -eu

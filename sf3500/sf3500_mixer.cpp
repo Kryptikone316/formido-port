@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include "sf3500_mixer.hpp"
 #include "hwaudio.hpp"
 

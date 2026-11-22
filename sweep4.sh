@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
 # Platform healing: the same 60 seeds as sweep.sh. Results: botruns/sweep/heal_<name>.txt
 cd "$(dirname "$0")"
 D="bug_health_mult=0.5,fire_delay_ticks=3,spawn_delay_mult=4"

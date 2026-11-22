@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /* Direct software mixer -> hwaudio_write(), replacing OpenAL (no working
  * ALSA/OSS backend exists on this device - confirmed during bring-up) and
  * replacing SDL_mixer's own Mix_* API (which would need a real SDL audio

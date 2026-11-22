@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /* sf3000-hwdisp - hardware display via driver_sf3500.so + HCGE.
  * Wraps SF3000/SF3500 HiChip Graphics Engine for rotation+scale+present in
  * HW. This is the real hardware rotation path; SDL's own

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-or-later
 """Make the centre screen of the enhanced game: data/ground_enh.dat and data/collisionmap_enh.dat.
 
 The arms of the cross have cliff walls along their sides, right up to the edge they share with the centre screen. That left an

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-or-later
 """Make the four wasteland screens of Formido's enhanced game (north, east, south, west arms of the map).
 
 Output (into the given folder, 640x480 PNG files with a .dat name, like the game's own data):

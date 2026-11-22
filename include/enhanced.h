@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
     Formido - Datafrog SF3500 port: the enhanced game.
 

@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
 # Builds formido.mipsel for the Data Frog SF3500 (MIPS32r2 74Kc, hard float, SDL 1.2 on the device).
 #
 #   MIPS_PREFIX=/path/to/mips-mti-linux-gnu- SYSROOT=/path/to/sysroot ./build_sf3500.sh

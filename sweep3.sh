@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
 # First Hive Tyrant earlier: the same 60 seeds as sweep.sh. Results: botruns/sweep/ty_<name>.txt
 cd "$(dirname "$0")"
 while IFS='|' read -r label tune; do

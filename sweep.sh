@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
 # One-knob-at-a-time sweep: every setting plays the same 60 seeds (an even mix of the four bot skills) with native builds.
 # Results: botruns/sweep/<label>.txt (one RESULT line per game). Run on the host: flatpak-spawn --host sh -c "cd <dir> && ./sweep.sh"
 cd "$(dirname "$0")"

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 # usage: one_bot.sh <seed> [skill]  (run on the host)
 cd ~/handhelds/sf3000-work/formido
 D=botruns/one; rm -rf $D; mkdir -p $D/.formido; ln -s $PWD/data $D/data; cp formido.cfg $D/

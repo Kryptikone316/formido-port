@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-or-later
 """Synthesise the enhanced game's own sounds (no samples used; everything is generated here):
 
   flame.dat        a loopable flamethrower roar: shaped noise with a flutter and crackles (exactly periodic, so the loop is seamless)

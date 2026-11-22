@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
 # Mobile bot variants (skills 4 and 5 mixed): 40 games each, tyrant at 5 min, regen 10 hp/s defaults unless the label says otherwise.
 cd "$(dirname "$0")"
 while IFS='|' read -r label env tune; do

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 HERE=${HERE:-$PWD}
 SR=$HOME/handhelds/sf3000-work/buildroot/output/host/mipsel-buildroot-linux-gnu/sysroot
 one() {

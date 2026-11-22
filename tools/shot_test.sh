@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 # usage: shot_test.sh <comma separated ms list> [extra env assignments are taken from the environment]; run on the host
 cd ~/handhelds/sf3000-work/formido
 D=botruns/shots
