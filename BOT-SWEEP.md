@@ -74,3 +74,13 @@ the bots die to swarm bursts, not to attrition, so healing between fights barely
 4x spawn delay): default healing median 280 s, 10 hp/s 336 s, 20 hp/s 310 s, 60 hp/s 330 s; share meeting the first Tyrant 40 % -> 47-57 %.
 Most of the gain is already there at 10 hp/s (`platform_regen_ticks` 6); the wait (`platform_regen_delay_ticks`) made no clear difference.
 Differences under about 30 s are within the noise between games.
+
+## How bugs take health, and the roaming-and-retreating bot (2026-11-21)
+
+Measured over 100 bot games: bots lose only about 4 hit points per second alive on average, but it comes in bursts: 4 % of ticks
+carry damage, most of them 1 hp, some 2 to 4 (a bug in contact bites on most ticks, and several bugs together take health
+off at roughly 25 hp/s). From the moment a bot falls below half health it dies in a median of 4 seconds (90th percentile 30 to 63 s).
+A roaming bot that retreats to the platform when hurt did no better than the campers (median 46 to 62 s, 0 to 8 % reach 5 minutes,
+whatever the healing rate up to 60 hp/s or the wait), but all the bots spend only about 4 to 7 seconds per game on the stone
+platform, so these runs do not test the retreat-and-heal pattern. A human can, and that needs the device (or a better bot).
+Platform healing now has no wait: it works whenever health is below full and the player stands on the platform.

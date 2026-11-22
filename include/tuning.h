@@ -19,9 +19,9 @@
 	X(carry_speed,               0.88f,  0.30f,   1.50f, "player",    "walking speed while carrying a power cell (1.0 = full speed)") \
 	X(fire_delay_ticks,          5.0f,   2.0f,   15.0f,  "player",    "ticks between shots (60 ticks = 1 second; lower fires faster)") \
 	X(platform_regen_ticks,      6.0f,   1.0f,  120.0f,  "player",    "natural healing on the stone platform: ticks per hit point (60 ticks = 1 second; 6 = 10 hit points a second; lower = faster)") \
-	X(platform_regen_delay_ticks, 90.0f, 0.0f,  600.0f,  "player",    "the platform starts healing you after this many ticks without damage (90 = a second and a half)") \
+	X(platform_regen_delay_ticks, 0.0f,  0.0f,  600.0f,  "player",    "the platform starts healing you after this many ticks without damage (0 = it heals whenever you are hurt; 90 = a second and a half of calm)") \
 	X(medbay_regen_ticks,        4.0f,   1.0f,  120.0f,  "player",    "the same as platform_regen_ticks with a south (medbay) cell active (4 = 15 hit points a second)") \
-	X(medbay_regen_delay_ticks,  30.0f,  0.0f,  600.0f,  "player",    "the same as platform_regen_delay_ticks with a south (medbay) cell active") \
+	X(medbay_regen_delay_ticks,  0.0f,   0.0f,  600.0f,  "player",    "the same as platform_regen_delay_ticks with a south (medbay) cell active") \
 	X(bug_health_mult,           1.00f,  0.30f,   5.00f, "bugs",      "all bugs' health (except the Tyrant) times this") \
 	X(bug_speed_mult,            1.00f,  0.50f,   2.00f, "bugs",      "all bugs' walking speed times this") \
 	X(bug_damage_mult,           1.00f,  0.25f,   5.00f, "bugs",      "damage of every bite on the player times this") \

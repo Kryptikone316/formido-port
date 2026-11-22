@@ -141,7 +141,7 @@ The main menu has **play classic game** (the original, untouched) and **play enh
   seconds, so it can never be chained. The bunker absorbs the shock.
 - **The hive adapts.** It watches how you play: standing still brings heavier bugs, running around brings fast
   swarms, throwing many bombs brings scattered swarms, low health brings runners; a short message tells you.
-- **The platform heals a little** when nothing has bitten for a while: 10 hit points a second after a second and a half without damage (15 a second with a south cell). Both the rate and the wait are knobs in `formido_tuning.cfg` (`platform_regen_ticks`, `platform_regen_delay_ticks`, `medbay_regen_ticks`, `medbay_regen_delay_ticks`).
+- **The platform heals a little** when nothing has bitten for a while: 10 hit points a second whenever you are hurt and standing on it, even while bugs bite (15 a second with a south cell). Both the rate and the wait are knobs in `formido_tuning.cfg` (`platform_regen_ticks`, `platform_regen_delay_ticks`, `medbay_regen_ticks`, `medbay_regen_delay_ticks`).
 - Scores of the two games are kept in separate Hall of Fame lists (left/right switches in the Hall of Fame).
 
 ## Settings (menu: game settings)

@@ -37,6 +37,9 @@ static int bot_calls = 0;
 static int bot_peak_bugs = 0;
 static int bot_tyrants_seen = 0;
 static long bot_last_tick = -1;
+static long bot_healed = 0, bot_platform_ticks = 0;
+static long bot_dmg_total = 0, bot_dmg_ticks = 0, bot_alive_ticks = 0, bot_first_hurt = -1, bot_hits[8];
+static int bot_prev_hp = 200;
 static void bot_minute_log();
 #endif
 
@@ -3013,6 +3016,18 @@ static void spawn_arm_loot(int ci) {
 void enhanced_update() {
 	enhanced_ticks++;
 #ifdef FORMIDO_TESTHOOKS
+	if(player.ok) {
+		bot_alive_ticks++;
+		int drop = bot_prev_hp - player.health;
+		if(drop > 0) {
+			bot_dmg_total += drop;
+			bot_dmg_ticks++;
+			bot_hits[drop > 7 ? 7 : drop]++;
+		}
+		if(player.health < 100 && bot_first_hurt < 0)
+			bot_first_hurt = enhanced_ticks;
+	}
+	bot_prev_hp = player.health;
 	bot_minute_log();
 	if(getenv("FORMIDO_BOT") && enhanced_ticks > 60L * 60L * 120L) {		// a run that survives two hours is cut off
 		extern bool main_loop_done;
@@ -3056,11 +3071,18 @@ void enhanced_update() {
 	prev_health = player.health;
 	if(player.ok && gx == 0 && gy == 0) {
 		float dx = (player.x - CELL_W / 2) / 100.0f, dy = (player.y - CELL_H / 2) / 112.0f;
+#ifdef FORMIDO_TESTHOOKS
+		if(dx * dx + dy * dy < 1.0f)
+			bot_platform_ticks++;
+#endif
 		bool medbay = mode_on() && mode == 3;
 		if(dx * dx + dy * dy < 1.0f && player.health < 200 && enhanced_ticks - last_damage_tick > (long)(medbay ? tune.medbay_regen_delay_ticks : tune.platform_regen_delay_ticks)) {
 			if(++regen_acc >= (int)(medbay ? tune.medbay_regen_ticks : tune.platform_regen_ticks)) {
 				regen_acc = 0;
 				player.health++;
+#ifdef FORMIDO_TESTHOOKS
+				bot_healed++;
+#endif
 				prev_health = player.health;
 			}
 			if((RAND(0,19)) == 0)
@@ -3138,6 +3160,13 @@ void enhanced_begin() {
 	if(getenv("FORMIDO_BOT"))
 		bot_in_match = true;
 	bot_peak_bugs = 0;
+	bot_healed = 0;
+	bot_platform_ticks = 0;
+	bot_dmg_total = bot_dmg_ticks = bot_alive_ticks = 0;
+	bot_first_hurt = -1;
+	bot_prev_hp = 200;
+	for(int i=0; i<8; i++)
+		bot_hits[i] = 0;
 	bot_tyrants_seen = 0;
 	bot_last_tick = -1;
 #endif
@@ -3880,12 +3909,29 @@ unsigned enhanced_bot_buttons(void) {
 	static int last_sector = 0, lag = 0;
 	if(skill < 0)
 		skill = atoi(getenv("FORMIDO_BOT"));
+	int sk = skill >= 4 ? (skill == 4 ? 1 : 2) : skill;		// skills 4 and 5 are the mobile bots: skill 1 and 2 reactions and aim
+	bool mobile = skill >= 4;
+	static bool healing = false;
+	static float arena_r = -1, heal_lo = 100, heal_hi = 175, pull = 9000;
+	if(arena_r < 0) {		// the mobile bot's numbers can be changed for experiments
+		arena_r = getenv("FORMIDO_BOTARENA") ? (float)atof(getenv("FORMIDO_BOTARENA")) : 235.0f;
+		if(getenv("FORMIDO_BOTLO")) heal_lo = (float)atof(getenv("FORMIDO_BOTLO"));
+		if(getenv("FORMIDO_BOTHI")) heal_hi = (float)atof(getenv("FORMIDO_BOTHI"));
+		if(getenv("FORMIDO_BOTPULL")) pull = (float)atof(getenv("FORMIDO_BOTPULL"));
+	}
+	if(mobile) {
+		// roams the screen, goes back to the platform when hurt, fights from it until mended
+		if(!healing && player.health < heal_lo)
+			healing = true;
+		else if(healing && player.health >= heal_hi)
+			healing = false;
+	}
 	if(!player.ok)
 		return 0;
 	if(num_critters > bot_peak_bugs)
 		bot_peak_bugs = num_critters;
 	// a decision every few passes, like a person's reaction time (a pass is 3 ticks)
-	int react = skill == 0 ? 4 : (skill == 1 ? 3 : (skill == 2 ? 2 : 1));
+	int react = sk == 0 ? 4 : (sk == 1 ? 3 : (sk == 2 ? 2 : 1));
 	if(--wait > 0 && pulse <= 0)
 		return held;
 	wait = react;
@@ -3896,7 +3942,7 @@ unsigned enhanced_bot_buttons(void) {
 	int near90 = 0, near130 = 0, near220 = 0;
 	CRITTER *nearest = NULL;
 	float nd = 1e9f;
-	float reach = 130.0f + 20.0f * skill;
+	float reach = 130.0f + 20.0f * sk;
 	struct BP { float x, y, R; };
 	static BP bp[160];
 	int nb = 0;
@@ -3919,10 +3965,10 @@ unsigned enhanced_bot_buttons(void) {
 			nb++;
 		}
 	}
-	// a target worth walking to (skill 1 and 2): health, bombs and mines (never the mushroom), a healing plant when hurt
+	// a target worth walking to (sk 1 and 2): health, bombs and mines (never the mushroom), a healing plant when hurt
 	float tx = 0, ty = 0;
 	bool have_target = false;
-	if(skill >= 1 && near90 == 0) {
+	if(sk >= 1 && near90 == 0) {
 		float bd = 1e9f;
 		for(int i=0; i<MAX_POWER_UPS; i++) {
 			if(!power_up[i].ok || power_up[i].type == POWER_UP_MUSHROOM)
@@ -3961,11 +4007,17 @@ unsigned enhanced_bot_buttons(void) {
 					cost += w * w;
 				}
 			}
-			// stay near the middle of the platform: the arms are not part of what this bot plays
+			// stay near the middle of the platform (the camping bots), or roam most of the screen (the mobile ones)
 			float ex = fx - 320.0f, ey = fy - 240.0f;
 			float ed = sqrtf(ex * ex + ey * ey);
-			if(ed > 140.0f)
-				cost += (ed - 140.0f) * (ed - 140.0f) * 1.5f;
+			float arena = (mobile && !healing) ? arena_r : 140.0f;
+			if(ed > arena)
+				cost += (ed - arena) * (ed - arena) * 1.5f;
+			if(mobile && healing) {
+				float pe = sqrtf((ex / 100.0f) * (ex / 100.0f) + (ey / 112.0f) * (ey / 112.0f));	// 1.0 = the platform's edge
+				if(pe > 0.85f)
+					cost += (pe - 0.85f) * pull;
+			}
 			if(have_target) {
 				float td = distance(fx, fy, tx, ty);
 				cost += td * 6.0f;
@@ -3981,11 +4033,11 @@ unsigned enhanced_bot_buttons(void) {
 	}
 	// aim (eight directions only) along the line that actually hits the closest bug; if no line hits one, towards the
 	// nearest bug, which is walking at us anyway. A bullet hits what is within the bug's half size of the line.
-	float range = 260.0f + 20.0f * skill;
+	float range = 260.0f + 20.0f * sk;
 	{
 		int best_sector = -1;
 		float best_d = 1e9f;
-		float slack = skill == 0 ? 3.0f : 0.0f;
+		float slack = sk == 0 ? 3.0f : 0.0f;
 		for(int k=0; k<8; k++) {
 			float ca = cosf(k * 0.785398f), sa = sinf(k * 0.785398f);
 			for(CRITTER *c = critter_first; c; c = c->next) {
@@ -4006,7 +4058,7 @@ unsigned enhanced_bot_buttons(void) {
 		if(sector < 0 && nearest && nd < range)
 			sector = ((int)floorf(atan2f(nearest->y - py, nearest->x - px) / 0.785398f + 0.5f) + 8) % 8;
 		if(sector >= 0) {
-			if(skill == 0) {
+			if(sk == 0) {
 				if(lag > 0) { sector = last_sector; lag--; }
 				else if(RANDF(0, 1) < 0.25f) lag = 4;
 			}
@@ -4026,11 +4078,11 @@ unsigned enhanced_bot_buttons(void) {
 		}
 	}
 	// a bomb or a mine when they crowd in; the traps and the bunker kit if the bot ever has them
-	if(player.special_weapon != 0 && near130 >= 4 && skill >= 1) {
+	if(player.special_weapon != 0 && near130 >= 4 && sk >= 1) {
 		b = (b & ~(B_L1 | B_A | B_B | B_X | B_Y)) | B_B;		// B without L1 is "special"
 		pulse = 1;
 	}
-	if(trap_loaded >= 0 && trap_charges > 0 && near130 >= 3 && skill >= 1)
+	if(trap_loaded >= 0 && trap_charges > 0 && near130 >= 3 && sk >= 1)
 		b |= B_R2;
 	if(kit_carried && near130 >= 4 && player.health < 140)
 		b |= B_R1;
@@ -4046,11 +4098,13 @@ void enhanced_bot_report() {
 	for(CRITTER *c = critter_first; c; c = c->next)
 		if(!c->remove && !c->hidden)
 			dead_roaming++;
-	printf("RESULT skill=%d seed=%s ticks=%ld secs=%ld score=%d kills=%d drone=%d runner=%d striker=%d brute=%d burrower=%d stunner=%d phantom=%d tyrant=%d tyrants_seen=%d tyrants_slain=%d hive=%d peak_bugs=%d bugs_at_end=%d capped=%d\n",
+	printf("RESULT skill=%d seed=%s ticks=%ld secs=%ld score=%d kills=%d drone=%d runner=%d striker=%d brute=%d burrower=%d stunner=%d phantom=%d tyrant=%d tyrants_seen=%d tyrants_slain=%d hive=%d peak_bugs=%d bugs_at_end=%d capped=%d healed=%ld platform_secs=%ld dmg=%ld dmg_ticks=%ld alive_ticks=%ld first_hurt_secs=%ld hits=%ld,%ld,%ld,%ld,%ld,%ld,%ld\n",
 		atoi(getenv("FORMIDO_BOT")), getenv("FORMIDO_SEED") ? getenv("FORMIDO_SEED") : "-", enhanced_ticks, enhanced_ticks / 60, kills, total,
 		stat_kills[CT_DRONE], stat_kills[CT_RUNNER], stat_kills[CT_STRIKER], stat_kills[CT_BRUTE], stat_kills[CT_BURROWER],
 		stat_kills[CT_STUNNER], stat_kills[CT_PHANTOM], stat_kills[CT_TYRANT], bot_tyrants_seen, stat_tyrants, hive_level,
-		bot_peak_bugs, dead_roaming, player.ok ? 1 : 0);
+		bot_peak_bugs, dead_roaming, player.ok ? 1 : 0, bot_healed, bot_platform_ticks / 60,
+		bot_dmg_total, bot_dmg_ticks, bot_alive_ticks, bot_first_hurt < 0 ? -1L : bot_first_hurt / 60,
+		bot_hits[1], bot_hits[2], bot_hits[3], bot_hits[4], bot_hits[5], bot_hits[6], bot_hits[7]);
 	fflush(stdout);
 }
 
