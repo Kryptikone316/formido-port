@@ -91,6 +91,7 @@ bool enhanced_guard_resting(CRITTER *c);
 // mends a little and the bugs wear the bunker down instead of the player; it blows up lightly when it is breached.
 void enhanced_guardian_killed(float x, float y, int type);
 bool enhanced_in_bunker();
+bool enhanced_bunker_target(float px, float py, float *deg);	// the bunker's gun: heading (0 = up, 90 = right) to the nearest bug; false when none
 bool enhanced_bunker_absorb(int damage);		// true when the player is inside: the damage goes to the bunker
 void enhanced_draw_under(SDL_Surface *bmp);		// the bunker's floor and the kit lying about, drawn under bugs and player
 

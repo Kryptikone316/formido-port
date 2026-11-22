@@ -84,3 +84,19 @@ A roaming bot that retreats to the platform when hurt did no better than the cam
 whatever the healing rate up to 60 hp/s or the wait), but all the bots spend only about 4 to 7 seconds per game on the stone
 platform, so these runs do not test the retreat-and-heal pattern. A human can, and that needs the device (or a better bot).
 Platform healing now has no wait: it works whenever health is below full and the player stands on the platform.
+
+## Bugs piling up at the edge of a screen (2026-11-21)
+
+Reported: bugs get stuck at the edge of the screen leading to the middle and pool there. Measured with the bots
+(12 runs, bug-ticks spent 150+ pixels from the player while hardly moving):
+
+| steering | stalled share | mean survival |
+|---|---|---|
+| before (critters off-screen still blocked those on-screen) | 85.8 % | 148 s |
+| off-screen bugs no longer collide with on-screen ones | 3.5 % | 54 s |
+| the same plus a flow field round cliff steps and rock islands | 1.8 % | 61 s |
+
+The queue at the seam was a deadlock: a bug stepping onto the screen collided with the off-screen bugs right behind
+the edge, so none of them entered; the column then arrived all at once. The old survival numbers (BOT-RESULTS.md,
+the sweeps) were measured with that jam in place, so real survival is shorter than they say (about a minute at the
+default settings, not two and a half); the knob comparisons keep their order but the medians would need re-running.

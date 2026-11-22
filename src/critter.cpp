@@ -268,7 +268,9 @@ bool critter_collisions(CRITTER *c) {
 	// Loop through all critters
 	while(temp) {
 #ifdef SF3500
-		if(temp != c && !temp->hidden) {
+		// (the enhanced game: bugs waiting off-screen do not count, or the ones queueing at the edge of the screen
+		// block each other, and the whole column stays out there)
+		if(temp != c && !temp->hidden && !(enhanced && (temp->x < 0 || temp->y < 0 || temp->x > screen->w || temp->y > screen->h))) {
 #else
 		if(temp != c) {
 #endif

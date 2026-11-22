@@ -39,6 +39,7 @@ static int bot_tyrants_seen = 0;
 static long bot_last_tick = -1;
 static long bot_healed = 0, bot_platform_ticks = 0;
 static long bot_dmg_total = 0, bot_dmg_ticks = 0, bot_alive_ticks = 0, bot_first_hurt = -1, bot_hits[8];
+static long bot_far_ticks = 0, bot_stall_ticks = 0;		// bug-ticks 150+ pixels from the player, and those spent hardly moving
 static int bot_prev_hp = 200;
 static void bot_minute_log();
 #endif
@@ -218,16 +219,160 @@ static bool world_thorns(int x, int y) {
 	return scr[i].col[(y - (cy - gy) * CELL_H) * CELL_W + (x - (cx - gx) * CELL_W)] == 3;
 }
 
+// Where a bug heads for. In sight of the player: straight at them. Otherwise it follows a flow field: a breadth-first
+// distance to the player over a coarse grid of the whole cross (8-pixel cells, open ground only, with a little clearance
+// from the walls), so bugs walk round the cliff steps and rock islands instead of pushing into them and piling up.
+extern long enhanced_ticks;
+
+#define NAV		8
+#define NAV_W	(3 * CELL_W / NAV)
+#define NAV_H	(3 * CELL_H / NAV)
+#define NAV_FAR	32767
+
+static unsigned char nav_open[NAV_W * NAV_H];
+static short nav_dist[NAV_W * NAV_H];
+static int nav_queue[NAV_W * NAV_H];
+static bool nav_built = false;
+static long nav_stamp = -1000;
+static int nav_src = -1;
+#ifdef FORMIDO_TESTHOOKS
+static long nav_us = 0, nav_floods = 0;
+#endif
+
+static bool abs_solid(int ax, int ay) {		// absolute world pixel: the centre screen starts at (CELL_W, CELL_H)
+	if(ax < 0 || ay < 0 || ax >= 3 * CELL_W || ay >= 3 * CELL_H)
+		return true;
+	int i = cell_index(ax / CELL_W - 1, ay / CELL_H - 1);
+	if(i < 0)
+		return true;
+	unsigned char v = scr[i].col[(ay % CELL_H) * CELL_W + (ax % CELL_W)];
+	return v == 1 || v == 2;
+}
+
+static void nav_build() {
+	for(int cy=0; cy<NAV_H; cy++) {
+		for(int cx=0; cx<NAV_W; cx++) {
+			int px = cx * NAV + NAV / 2, py = cy * NAV + NAV / 2;
+			nav_open[cy * NAV_W + cx] = !(abs_solid(px, py) || abs_solid(px + 7, py) || abs_solid(px - 7, py) ||
+				abs_solid(px, py + 7) || abs_solid(px, py - 7));
+		}
+	}
+	nav_built = true;
+}
+
+static void nav_flood(int src) {
+	for(int i=0; i<NAV_W*NAV_H; i++)
+		nav_dist[i] = NAV_FAR;
+	int head = 0, tail = 0;
+	nav_dist[src] = 0;
+	nav_queue[tail++] = src;
+	while(head < tail) {
+		int c = nav_queue[head++];
+		int cx = c % NAV_W, cy = c / NAV_W;
+		short d = nav_dist[c] + 1;
+		if(cx > 0 && nav_open[c-1] && nav_dist[c-1] > d) { nav_dist[c-1] = d; nav_queue[tail++] = c-1; }
+		if(cx < NAV_W-1 && nav_open[c+1] && nav_dist[c+1] > d) { nav_dist[c+1] = d; nav_queue[tail++] = c+1; }
+		if(cy > 0 && nav_open[c-NAV_W] && nav_dist[c-NAV_W] > d) { nav_dist[c-NAV_W] = d; nav_queue[tail++] = c-NAV_W; }
+		if(cy < NAV_H-1 && nav_open[c+NAV_W] && nav_dist[c+NAV_W] > d) { nav_dist[c+NAV_W] = d; nav_queue[tail++] = c+NAV_W; }
+	}
+	nav_src = src;
+}
+
+// open ground all the way between two absolute points (the ends are allowed to sit close to a wall)
+static bool nav_clear(int ax, int ay, int bx, int by) {
+	float dx = (float)(bx - ax), dy = (float)(by - ay);
+	float len = sqrtf(dx * dx + dy * dy);
+	int steps = (int)(len / 6.0f);
+	for(int i=1; i<steps; i++) {
+		float t = (float)i / steps;
+		float px = ax + dx * t, py = ay + dy * t;
+		if(len * t < 14 || len * (1 - t) < 20)
+			continue;
+		int cx = (int)px / NAV, cy = (int)py / NAV;
+		if(cx < 0 || cy < 0 || cx >= NAV_W || cy >= NAV_H || !nav_open[cy * NAV_W + cx])
+			return false;
+	}
+	return true;
+}
+
 void world_target(float x, float y, float *tx, float *ty) {
 	*tx = player.x;
 	*ty = player.y;
-	int bi = cell_index(gx + fdiv((int)x, CELL_W), gy + fdiv((int)y, CELL_H));
-	int pi = cell_index(gx + fdiv((int)player.x, CELL_W), gy + fdiv((int)player.y, CELL_H));
-	if(bi < 0 || pi < 0 || bi == pi || bi == 0 || pi == 0)
+	if(!world_loaded)
 		return;
-	// two different arms: through the middle of the centre screen
-	*tx = (float)(CELL_W / 2 - gx * CELL_W);
-	*ty = (float)(CELL_H / 2 - gy * CELL_H);
+#ifdef FORMIDO_TESTHOOKS
+	if(getenv("FORMIDO_NONAV")) {		// the old straight-line steering, for comparisons
+		int bi = cell_index(gx + fdiv((int)x, CELL_W), gy + fdiv((int)y, CELL_H));
+		int pi = cell_index(gx + fdiv((int)player.x, CELL_W), gy + fdiv((int)player.y, CELL_H));
+		if(!(bi < 0 || pi < 0 || bi == pi || bi == 0 || pi == 0)) {
+			*tx = (float)(CELL_W / 2 - gx * CELL_W);
+			*ty = (float)(CELL_H / 2 - gy * CELL_H);
+		}
+		return;
+	}
+#endif
+	if(!nav_built)
+		nav_build();
+	int offx = (gx + 1) * CELL_W, offy = (gy + 1) * CELL_H;			// current screen frame -> absolute
+	int bax = (int)x + offx, bay = (int)y + offy;
+	int pax = (int)player.x + offx, pay = (int)player.y + offy;
+	if(bax < 0 || bay < 0 || pax < 0 || pay < 0 || bax >= 3 * CELL_W || bay >= 3 * CELL_H || pax >= 3 * CELL_W || pay >= 3 * CELL_H)
+		return;
+	float ddx = player.x - x, ddy = player.y - y;
+	if(ddx * ddx + ddy * ddy < 320.0f * 320.0f && nav_clear(bax, bay, pax, pay))
+		return;															// in plain sight
+
+	int src = (pay / NAV) * NAV_W + (pax / NAV);
+	if(nav_src < 0 || enhanced_ticks - nav_stamp >= 10 || enhanced_ticks < nav_stamp) {		// about six times a second: bugs only need the general way round
+#ifdef FORMIDO_TESTHOOKS
+		struct timespec t0, t1;
+		clock_gettime(CLOCK_MONOTONIC, &t0);
+#endif
+		nav_flood(src);
+		nav_stamp = enhanced_ticks;
+#ifdef FORMIDO_TESTHOOKS
+		clock_gettime(CLOCK_MONOTONIC, &t1);
+		nav_us += (t1.tv_sec - t0.tv_sec) * 1000000L + (t1.tv_nsec - t0.tv_nsec) / 1000L;
+		nav_floods++;
+#endif
+	}
+
+	int cx = bax / NAV, cy = bay / NAV;
+	int moved = 0;
+	for(int step=0; step<3; step++) {
+		short cur = nav_dist[cy * NAV_W + cx];		// NAV_FAR when the bug stands within the wall clearance: any reachable neighbour will do
+		short bd = NAV_FAR;
+		float bscore = 1e9f;
+		int bx = -1, by = -1;
+		for(int k=0; k<8; k++) {
+			static const int DX[8] = { 1, -1, 0, 0, 1, 1, -1, -1 }, DY[8] = { 0, 0, 1, -1, 1, -1, 1, -1 };
+			int nx = cx + DX[k], ny = cy + DY[k];
+			if(nx < 0 || ny < 0 || nx >= NAV_W || ny >= NAV_H || !nav_open[ny * NAV_W + nx])
+				continue;
+			if(DX[k] && DY[k] && (!nav_open[cy * NAV_W + nx] || !nav_open[ny * NAV_W + cx]))
+				continue;			// no cutting round a corner
+			short d = nav_dist[ny * NAV_W + nx];
+			if(d >= NAV_FAR || (cur < NAV_FAR && d >= cur))
+				continue;
+			float px = (float)(nx * NAV + NAV / 2 - pax), py = (float)(ny * NAV + NAV / 2 - pay);
+			float score = px * px + py * py;
+			if(d < bd || (d == bd && score < bscore)) {
+				bd = d;
+				bscore = score;
+				bx = nx;
+				by = ny;
+			}
+		}
+		if(bx < 0)
+			break;
+		cx = bx;
+		cy = by;
+		moved++;
+	}
+	if(moved) {
+		*tx = (float)(cx * NAV + NAV / 2 - offx);
+		*ty = (float)(cy * NAV + NAV / 2 - offy);
+	}
 }
 
 
@@ -1460,6 +1605,24 @@ static void bunker_blast(float x, float y) {
 		}
 		c = next;
 	}
+}
+
+bool enhanced_bunker_target(float px, float py, float *deg) {
+	CRITTER *best = NULL;
+	float bd = 1e9f;
+	for(CRITTER *c = critter_first; c; c = c->next) {
+		if(c->hidden || c->health <= 0)
+			continue;
+		float d = distance(px, py, c->x, c->y);
+		if(d < bd) {
+			bd = d;
+			best = c;
+		}
+	}
+	if(!best || bd > 260)
+		return false;
+	*deg = (float)(atan2((double)(best->x - px), (double)(py - best->y)) * 180.0 / 3.14159265358979);
+	return true;
 }
 
 bool enhanced_bunker_absorb(int damage) {
@@ -3018,6 +3181,16 @@ void enhanced_update() {
 #ifdef FORMIDO_TESTHOOKS
 	if(player.ok) {
 		bot_alive_ticks++;
+		for(CRITTER *c = critter_first; c; c = c->next) {
+			if(c->remove || c->hidden || c->guard || c->type == CT_BURROWER || c->type == CT_STUNNER || c->type == CT_TYRANT || enhanced_bug_mode(c))
+				continue;
+			float dx = c->x - player.x, dy = c->y - player.y;
+			if(dx * dx + dy * dy < 150.0f * 150.0f)
+				continue;
+			bot_far_ticks++;
+			if(fabsf(c->x - c->sx) + fabsf(c->y - c->sy) < 0.4f)
+				bot_stall_ticks++;
+		}
 		int drop = bot_prev_hp - player.health;
 		if(drop > 0) {
 			bot_dmg_total += drop;
@@ -3163,6 +3336,7 @@ void enhanced_begin() {
 	bot_healed = 0;
 	bot_platform_ticks = 0;
 	bot_dmg_total = bot_dmg_ticks = bot_alive_ticks = 0;
+	bot_far_ticks = bot_stall_ticks = 0;
 	bot_first_hurt = -1;
 	bot_prev_hp = 200;
 	for(int i=0; i<8; i++)
@@ -3180,6 +3354,8 @@ void enhanced_begin() {
 	orig_bground = scr[0].orig;
 
 	enhanced_ticks = 0;
+	nav_stamp = -1000;
+	nav_src = -1;
 #ifdef FORMIDO_TESTHOOKS
 	// test builds: FORMIDO_T0=<seconds> starts the hive's clock later, so every rank shows up at once
 	if(getenv("FORMIDO_T0"))
@@ -3928,6 +4104,15 @@ unsigned enhanced_bot_buttons(void) {
 	}
 	if(!player.ok)
 		return 0;
+	if(skill == 9) {		// bunker test: deploy the kit, walk in, then hold fire with no direction at all
+		if(enhanced_ticks >= 30 && enhanced_ticks < 40)
+			return B_R1;
+		if(enhanced_ticks >= 60 && enhanced_ticks < 140)
+			return B_UP;
+		if(enhanced_ticks >= 200)
+			return B_A;
+		return 0;
+	}
 	if(num_critters > bot_peak_bugs)
 		bot_peak_bugs = num_critters;
 	// a decision every few passes, like a person's reaction time (a pass is 3 ticks)
@@ -4098,12 +4283,23 @@ void enhanced_bot_report() {
 	for(CRITTER *c = critter_first; c; c = c->next)
 		if(!c->remove && !c->hidden)
 			dead_roaming++;
-	printf("RESULT skill=%d seed=%s ticks=%ld secs=%ld score=%d kills=%d drone=%d runner=%d striker=%d brute=%d burrower=%d stunner=%d phantom=%d tyrant=%d tyrants_seen=%d tyrants_slain=%d hive=%d peak_bugs=%d bugs_at_end=%d capped=%d healed=%ld platform_secs=%ld dmg=%ld dmg_ticks=%ld alive_ticks=%ld first_hurt_secs=%ld hits=%ld,%ld,%ld,%ld,%ld,%ld,%ld\n",
+	fprintf(stderr, "nav floods %ld, %.2f ms each\n", nav_floods, nav_floods ? nav_us / 1000.0 / nav_floods : 0.0);
+	if(getenv("FORMIDO_DUMP")) {
+		printf("PLAYER %d %d\n", (int)player.x + (gx + 1) * CELL_W, (int)player.y + (gy + 1) * CELL_H);
+		for(CRITTER *c = critter_first; c; c = c->next)
+			if(!c->remove && !c->hidden)
+{
+				float ttx, tty;
+				world_target(c->x, c->y, &ttx, &tty);
+				printf("BUG %d %d %d %d %d rel=%.1f,%.1f d=%.2f,%.2f tgt=%.0f,%.0f bl=%d%d%d%d mode=%d gxy=%d,%d\n", (int)c->x + (gx + 1) * CELL_W, (int)c->y + (gy + 1) * CELL_H, c->type, c->guard, fabsf(c->x - c->sx) + fabsf(c->y - c->sy) < 0.4f,
+					c->x, c->y, c->dirx, c->diry, ttx, tty, world_blocked((int)c->x+3,(int)c->y,false), world_blocked((int)c->x-3,(int)c->y,false), world_blocked((int)c->x,(int)c->y+3,false), world_blocked((int)c->x,(int)c->y-3,false), enhanced_bug_mode(c), gx, gy); }
+	}
+	printf("RESULT skill=%d seed=%s ticks=%ld secs=%ld score=%d kills=%d drone=%d runner=%d striker=%d brute=%d burrower=%d stunner=%d phantom=%d tyrant=%d tyrants_seen=%d tyrants_slain=%d hive=%d peak_bugs=%d bugs_at_end=%d capped=%d healed=%ld platform_secs=%ld dmg=%ld dmg_ticks=%ld alive_ticks=%ld far_ticks=%ld stall_ticks=%ld first_hurt_secs=%ld hits=%ld,%ld,%ld,%ld,%ld,%ld,%ld\n",
 		atoi(getenv("FORMIDO_BOT")), getenv("FORMIDO_SEED") ? getenv("FORMIDO_SEED") : "-", enhanced_ticks, enhanced_ticks / 60, kills, total,
 		stat_kills[CT_DRONE], stat_kills[CT_RUNNER], stat_kills[CT_STRIKER], stat_kills[CT_BRUTE], stat_kills[CT_BURROWER],
 		stat_kills[CT_STUNNER], stat_kills[CT_PHANTOM], stat_kills[CT_TYRANT], bot_tyrants_seen, stat_tyrants, hive_level,
 		bot_peak_bugs, dead_roaming, player.ok ? 1 : 0, bot_healed, bot_platform_ticks / 60,
-		bot_dmg_total, bot_dmg_ticks, bot_alive_ticks, bot_first_hurt < 0 ? -1L : bot_first_hurt / 60,
+		bot_dmg_total, bot_dmg_ticks, bot_alive_ticks, bot_far_ticks, bot_stall_ticks, bot_first_hurt < 0 ? -1L : bot_first_hurt / 60,
 		bot_hits[1], bot_hits[2], bot_hits[3], bot_hits[4], bot_hits[5], bot_hits[6], bot_hits[7]);
 	fflush(stdout);
 }

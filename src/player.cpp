@@ -396,6 +396,14 @@ void PLAYER::shoot() {
 	move_xy(28, add_angle(angle, -40), &ix,&iy);
 	bx = x+ix;
 	by = y+iy;
+#ifdef SF3500
+	if(enhanced) {
+		// the shot is traced from the middle of the body: from the muzzle, 28 pixels out, it skipped every bug pressed
+		// against the player (the ones that swarm the bunker)
+		bx = x;
+		by = y;
+	}
+#endif
 
 	// Bullet dir
 	float bdirx, bdiry;
@@ -555,8 +563,13 @@ void PLAYER::move() {
 			want = (float)(atan2((double)ax, (double)-ay) * 180.0 / 3.14159265358979);
 			have_want = true;
 		}
-		else if((mx || my) && !key[key_shoot]) {
+		else if((mx || my) && (!key[key_shoot] || (enhanced && enhanced_in_bunker()))) {
+			// (inside the bunker the D-pad cannot walk, so it aims: all eight directions, firing or not)
 			want = (float)(atan2((double)mx, (double)-my) * 180.0 / 3.14159265358979);
+			have_want = true;
+		}
+		else if(enhanced && enhanced_in_bunker() && firing() && enhanced_bunker_target(x, y, &want)) {
+			// inside the bunker with fire held and no direction pressed: the gun swings to the nearest bug
 			have_want = true;
 		}
 		if(have_want) {
@@ -573,6 +586,13 @@ void PLAYER::move() {
 				diff = -40;
 			aim = add_angle(aim, diff);
 		}
+#ifdef FORMIDO_TESTHOOKS
+		if(enhanced && enhanced_in_bunker() && getenv("FORMIDO_BUNKERLOG")) {
+			static int n = 0;
+			if(++n % 40 == 0)
+				fprintf(stderr, "bunker aim %.0f want %s%.0f firing %d dpad %d,%d face %d,%d\n", aim, have_want ? "" : "-", want, (int)firing(), mx, my, ax, ay);
+		}
+#endif
 		// The sprite's gun hangs 60 degrees to the left of the body, and bullets leave along angle-60
 		angle = add_angle(aim, 60);
 	}

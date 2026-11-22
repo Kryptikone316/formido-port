@@ -109,6 +109,9 @@ The main menu has **play classic game** (the original, untouched) and **play enh
   as a bar, and it fatigues slowly on its own; an empty bunker crumbles after 90 seconds). When it expires it goes off
   like a small mine and hurts the bugs crowding it, so you are never trapped, and you carry on normally. In the enhanced
   game R1 is the bunker button, so A (without L1) is the way to fire along the aim.
+  Inside the bunker the D-pad aims instead of walking (all eight directions, diagonals included, even while firing);
+  L1 plus the face buttons still work, and with fire held and nothing pressed the bunker's gun swings to the nearest
+  bug on its own, so nothing reaches it from a blind corner.
 - **Laser sight.** A thin red line from the muzzle along the line of fire (up to 260 pixels, ending at a wall, crag or bug,
   with a small dot). Settings: off, enhanced (the default: only in the enhanced game) or always.
 - **No dead-end slots.** The arms' collision is cleaned so that every gap is at least body-wide (about 40 pixels): the
