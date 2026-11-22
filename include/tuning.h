@@ -18,7 +18,7 @@
 	X(contact_speed,             0.60f,  0.10f,   1.00f, "player",    "share of your movement kept while a bug overlaps you (the classic game keeps 0.30)") \
 	X(carry_speed,               0.88f,  0.30f,   1.50f, "player",    "walking speed while carrying a power cell (1.0 = full speed)") \
 	X(fire_delay_ticks,          5.0f,   2.0f,   15.0f,  "player",    "ticks between shots (60 ticks = 1 second; lower fires faster)") \
-	X(platform_regen_ticks,      12.0f,  1.0f,  120.0f,  "player",    "natural healing on the stone platform: ticks per hit point (60 ticks = 1 second; 12 = 5 hit points a second; lower = faster)") \
+	X(platform_regen_ticks,      6.0f,   1.0f,  120.0f,  "player",    "natural healing on the stone platform: ticks per hit point (60 ticks = 1 second; 6 = 10 hit points a second; lower = faster)") \
 	X(platform_regen_delay_ticks, 90.0f, 0.0f,  600.0f,  "player",    "the platform starts healing you after this many ticks without damage (90 = a second and a half)") \
 	X(medbay_regen_ticks,        4.0f,   1.0f,  120.0f,  "player",    "the same as platform_regen_ticks with a south (medbay) cell active (4 = 15 hit points a second)") \
 	X(medbay_regen_delay_ticks,  30.0f,  0.0f,  600.0f,  "player",    "the same as platform_regen_delay_ticks with a south (medbay) cell active") \
