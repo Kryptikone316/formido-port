@@ -66,3 +66,11 @@ Reading: bug health, time between shots and the spawn schedule are the strong le
 
 At the default settings nobody lives to 5 minutes, so moving the Tyrant from 8 to 5 minutes changes nothing; it only matters at
 settings where bots survive that long, where it doubles to triples the share that meet one without changing the median.
+
+## Platform healing (sweep4.sh, 60 games per row, Tyrant at 5 minutes)
+
+Default settings: median 52 to 56 s for every healing rate and wait tried (5, 10, 20, 60 hit points a second; waits of 1.5 s, 0.5 s, none):
+the bots die to swarm bursts, not to attrition, so healing between fights barely matters. At setting D (half bug health, 3-tick fire,
+4x spawn delay): default healing median 280 s, 10 hp/s 336 s, 20 hp/s 310 s, 60 hp/s 330 s; share meeting the first Tyrant 40 % -> 47-57 %.
+Most of the gain is already there at 10 hp/s (`platform_regen_ticks` 6); the wait (`platform_regen_delay_ticks`) made no clear difference.
+Differences under about 30 s are within the noise between games.
