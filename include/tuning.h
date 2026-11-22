@@ -23,8 +23,8 @@
 	X(medbay_regen_ticks,        4.0f,   1.0f,  120.0f,  "player",    "the same as platform_regen_ticks with a south (medbay) cell active (4 = 15 hit points a second)") \
 	X(medbay_regen_delay_ticks,  0.0f,   0.0f,  600.0f,  "player",    "the same as platform_regen_delay_ticks with a south (medbay) cell active") \
 	X(bug_health_mult,           1.00f,  0.30f,   5.00f, "bugs",      "all bugs' health (except the Tyrant) times this") \
-	X(bug_speed_mult,            1.00f,  0.50f,   2.00f, "bugs",      "all bugs' walking speed times this") \
-	X(bug_damage_mult,           1.00f,  0.25f,   5.00f, "bugs",      "damage of every bite on the player times this") \
+	X(bug_speed_mult,            0.95f,  0.50f,   2.00f, "bugs",      "all bugs' walking speed times this") \
+	X(bug_damage_mult,           0.80f,  0.25f,   5.00f, "bugs",      "damage of every bite on the player times this") \
 	X(spawn_delay_mult,          1.20f,  0.40f,   5.00f, "bugs",      "time between hive spawns times this (the classic game's schedule is 1.0; higher = fewer bugs)") \
 	X(max_roaming_bugs,          90.0f,  20.0f,  160.0f, "bugs",      "most bugs roaming at once (guards waiting at their posts do not count)") \
 	X(weight_runner,             1.00f,  0.00f,  10.00f, "bugs",      "how often runners are picked (0 = never, 2 = twice as often)") \
