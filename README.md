@@ -106,7 +106,7 @@ The main menu has **play classic game** (the original, untouched) and **play enh
   one kit or bunker at a time). Walk over the kit to take it, then press **R1** to deploy the bunker a little ahead of
   you and step onto it. Inside you cannot walk, but you can turn, aim and fire out; you mend 3 hit points a second, and
   the bugs wear the bunker down instead of you (it takes about a third of each bite; 800 points of integrity, shown
-  as a bar, and it fatigues slowly on its own; an empty bunker crumbles after 90 seconds). When it expires it goes off
+  as a bar, and it fatigues slowly on its own; it stands until its integrity is gone, whether you are inside or not). Press **R1** again inside it to step out (to collect pick-ups, say) and walk back in whenever you like. When it expires it goes off
   like a small mine and hurts the bugs crowding it, so you are never trapped, and you carry on normally. In the enhanced
   game R1 is the bunker button, so A (without L1) is the way to fire along the aim.
   Inside the bunker the D-pad aims instead of walking (all eight directions, diagonals included, even while firing);

@@ -638,13 +638,15 @@ static int pick_type() {
 		w[CT_BRUTE] = (w[CT_BRUTE] < 6 ? 6 : w[CT_BRUTE]) * 2.0f;
 	}
 	if(adapt_camp) { w[CT_BRUTE] *= 2.4f; w[CT_STRIKER] *= 1.6f; if(t >= 40 && w[CT_BRUTE] == 0 && count_type(CT_BRUTE) < 1) w[CT_BRUTE] = 6; }
-	if(adapt_kite) { w[CT_RUNNER] *= 2.2f; if(t >= 10 && w[CT_RUNNER] < 10) w[CT_RUNNER] = 10; }
+	if(adapt_kite) { w[CT_RUNNER] *= 1.6f; if(t >= 10 && w[CT_RUNNER] < 10) w[CT_RUNNER] = 10; }
 	if(adapt_bombs) { w[CT_RUNNER] *= 1.8f; w[CT_STRIKER] *= 1.3f; }
 	if(adapt_low) { w[CT_RUNNER] *= 1.6f; }
 
 	for(int i=0; i<NUM_AMMO; i++)
 		w[i] *= 1.0f - 0.7f * ammo_counter[i];
 	w[CT_RUNNER] *= tune.weight_runner;
+	if(count_type(CT_RUNNER) >= (int)tune.runner_max_alive)
+		w[CT_RUNNER] = 0;
 	w[CT_STRIKER] *= tune.weight_striker;
 	w[CT_BRUTE] *= tune.weight_brute;
 
@@ -708,7 +710,7 @@ void enhanced_spawn_event() {
 	int type = pick_type();
 	int n = 1;
 	if(type == CT_RUNNER)
-		n = (RAND(3,5)) + (adapt_bombs ? 2 : 0);
+		n = (RAND((int)tune.runner_pack_min, (int)tune.runner_pack_max)) + (adapt_bombs ? 1 : 0);
 	float x, y;
 	bool visible;
 	if(!spawn_point(&x, &y, &visible))
@@ -1473,6 +1475,7 @@ struct BUNKER {
 	float integrity;
 	bool inside;
 	int idle;
+	bool relock;			// the player stepped out: it takes them leaving the doorway before walking in re-enters
 };
 struct KIT {
 	bool ok;
@@ -1674,6 +1677,7 @@ static void bunker_deploy() {
 			bunker.integrity = (float)atoi(getenv("FORMIDO_BUNKERHP"));
 #endif
 		bunker.inside = false;
+		bunker.relock = false;
 		bunker.idle = 0;
 		kit_carried = false;
 		set_message("bunker ready: step inside");
@@ -1684,10 +1688,40 @@ static void bunker_deploy() {
 	set_message("no room to deploy the bunker here");
 }
 
+// R1 inside the bunker: step out (to collect pick-ups, say) and walk back in later. The bunker stays as it is and holds
+// out until its integrity is gone.
+static void bunker_step_out() {
+	float dx, dy;
+	move_xy(1.0f, add_angle(player.angle, -60), &dx, &dy);			// the way the player is aiming first, then round the compass
+	for(int k=0; k<8; k++) {
+		float a = k * 45.0f;
+		float ox = dx, oy = dy;
+		if(k) {
+			float ca = cosf(a * 3.14159265f / 180.0f), sa = sinf(a * 3.14159265f / 180.0f);
+			ox = dx * ca - dy * sa;
+			oy = dx * sa + dy * ca;
+		}
+		float x = bunker.x + ox * 36, y = bunker.y + oy * 36;
+		if(world_blocked((int)x, (int)y, false) || world_blocked((int)x + 10, (int)y, false) || world_blocked((int)x - 10, (int)y, false) ||
+		   world_blocked((int)x, (int)y + 10, false) || world_blocked((int)x, (int)y - 10, false))
+			continue;
+		player.x = player.sx = x;
+		player.y = player.sy = y;
+		player.dirx = player.diry = 0;
+		bunker.inside = false;
+		bunker.relock = true;
+		set_message("out of the bunker: walk back in to use it");
+		return;
+	}
+	set_message("no room to step out here");
+}
+
 static void bunker_update() {
 	bool r = key[SDLK_r] != 0;
 	if(r && !r_prev && kit_carried && !bunker.ok && player.ok)
 		bunker_deploy();
+	else if(r && !r_prev && bunker.ok && bunker.inside && player.ok)
+		bunker_step_out();
 	r_prev = r;
 
 	if(kit.ok) {
@@ -1709,13 +1743,15 @@ static void bunker_update() {
 	if(!player.ok)
 		bunker.inside = false;
 	if(!bunker.inside) {
-		if(player.ok && distance(player.x, player.y, bunker.x, bunker.y) < BUNKER_ENTER) {
+		float d = player.ok ? distance(player.x, player.y, bunker.x, bunker.y) : 1e9f;
+		if(bunker.relock && d >= BUNKER_ENTER + 8)
+			bunker.relock = false;
+		if(!bunker.relock && d < BUNKER_ENTER) {
 			bunker.inside = true;
 			bunker_regen = 0;
-			set_message("inside the bunker: fire away");
+			set_message("inside the bunker: fire away, R1 steps out");
 		}
-		else if(++bunker.idle > BUNKER_IDLE_TICKS)
-			expired = true;
+		// (an empty bunker stands until its integrity is gone: it only fatigues, below)
 	}
 	if(bunker.inside) {
 		player.x = bunker.x;
@@ -3943,7 +3979,7 @@ void enhanced_show_legend() {
 	one[0] = tbox_spr[0]; one[1] = tbox_spr[1]; one[2] = tbox_spr[2];
 	legend_row(bmp, 0, 2, 3, one, NULL, (char *)"trap discs", (char *)"R2 lays, stay off");
 	one[0] = kit_spr;
-	legend_row(bmp, 0, 3, 1, one, NULL, (char *)"bunker kit", (char *)"R1 deploys, step in");
+	legend_row(bmp, 0, 3, 1, one, NULL, (char *)"bunker kit", (char *)"R1 deploy, R1 leave");
 	one[0] = hplant_img;
 	legend_row(bmp, 0, 4, 1, one, hplant_img ? &plant_part : NULL, (char *)"healing plant", (char *)"stand near, it fades");
 	one[0] = gfx_pu_health[0]; one[1] = gfx_pu_bomb[0]; one[2] = gfx_pu_mine[0]; one[3] = gfx_pu_mush[0];
@@ -4109,6 +4145,23 @@ unsigned enhanced_bot_buttons(void) {
 			return B_R1;
 		if(enhanced_ticks >= 60 && enhanced_ticks < 140)
 			return B_UP;
+		if(getenv("FORMIDO_BUNKEREXIT")) {		// step out at tick 400, walk about, walk back in at tick 700
+			if(enhanced_ticks >= 400 && enhanced_ticks < 410)
+				return B_R1;
+			if(enhanced_ticks >= 410 && enhanced_ticks < 700 && !enhanced_in_bunker()) {
+				if(enhanced_ticks % 60 == 0)
+					fprintf(stderr, "t=%ld outside: distance to bunker %.0f, in=%d\n", enhanced_ticks, distance(player.x, player.y, bunker.x, bunker.y), (int)enhanced_in_bunker());
+				return enhanced_ticks < 520 ? (B_LEFT | B_A) : B_A;
+			}
+			if(enhanced_ticks >= 700 && !enhanced_in_bunker()) {
+				unsigned b = B_A;
+				if(player.x < bunker.x - 6) b |= B_RIGHT; else if(player.x > bunker.x + 6) b |= B_LEFT;
+				if(player.y < bunker.y - 6) b |= B_DOWN; else if(player.y > bunker.y + 6) b |= B_UP;
+				return b;
+			}
+			if(enhanced_ticks >= 700 && enhanced_ticks % 60 == 0)
+				fprintf(stderr, "t=%ld back inside: %d bunker ok %d integrity %.0f\n", enhanced_ticks, (int)enhanced_in_bunker(), (int)bunker.ok, bunker.integrity);
+		}
 		if(enhanced_ticks >= 200)
 			return B_A;
 		return 0;

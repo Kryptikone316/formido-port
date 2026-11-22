@@ -1,6 +1,6 @@
 cd ~/handhelds/sf3000-work/formido
 mkdir -p botruns
-for tag in nonav nav; do
+for tag in ${TAGS:-nonav nav}; do
   : > botruns/stall_$tag.txt
   for seed in 1 2 3 4 5 6 7 8 9 10 11 12; do
     D=botruns/stall_$tag-$seed; rm -rf $D; mkdir -p $D/.formido; ln -s $PWD/data $D/data; cp formido.cfg $D/

@@ -28,6 +28,9 @@
 	X(spawn_delay_mult,          1.20f,  0.40f,   5.00f, "bugs",      "time between hive spawns times this (the classic game's schedule is 1.0; higher = fewer bugs)") \
 	X(max_roaming_bugs,          90.0f,  20.0f,  160.0f, "bugs",      "most bugs roaming at once (guards waiting at their posts do not count)") \
 	X(weight_runner,             1.00f,  0.00f,  10.00f, "bugs",      "how often runners are picked (0 = never, 2 = twice as often)") \
+	X(runner_pack_min,           2.0f,   1.0f,   10.0f,  "bugs",      "fewest runners (the small fast swarm bugs) in one pack") \
+	X(runner_pack_max,           3.0f,   1.0f,   10.0f,  "bugs",      "most runners in one pack (the classic hive sent 3 to 5)") \
+	X(runner_max_alive,          10.0f,  0.0f,  100.0f,  "bugs",      "the hive sends no more runners while this many are alive") \
 	X(weight_striker,            1.00f,  0.00f,  10.00f, "bugs",      "how often strikers are picked") \
 	X(weight_brute,              1.00f,  0.00f,  10.00f, "bugs",      "how often brutes are picked") \
 	X(time_toughening,           0.40f,  0.00f,   3.00f, "bugs",      "extra health of the stronger ranks after 15 minutes (0.4 = +40 %)") \

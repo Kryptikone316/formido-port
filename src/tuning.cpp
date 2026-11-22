@@ -144,6 +144,8 @@ void tune_load(const char *path) {
 	// keep ranges that make sense
 	if(tune.garrison_max < tune.garrison_min)
 		tune.garrison_max = tune.garrison_min;
+	if(tune.runner_pack_max < tune.runner_pack_min)
+		tune.runner_pack_max = tune.runner_pack_min;
 	if(tune.burrower_max_seconds < tune.burrower_min_seconds)
 		tune.burrower_max_seconds = tune.burrower_min_seconds;
 	if(tune.ammo_max_seconds < tune.ammo_min_seconds)
