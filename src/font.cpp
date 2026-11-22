@@ -166,9 +166,6 @@ void unload_fonts() {
 #define MED_SPACING	13
 SDL_Surface *fnt_big[2][128];
 SDL_Surface *fnt_med[2][128];
-SDL_Surface *fnt_score[128];			// the score counter: the bold font a little smaller
-#define SCORE_SCALE	0.875f
-#define SCORE_SPACING	17
 
 static SDL_Surface *scale_glyph(SDL_Surface *src, float scale) {
 	int nw = (int)(src->w * scale + 0.5f), nh = (int)(src->h * scale + 0.5f);
@@ -222,8 +219,6 @@ void load_big_font() {
 	for(int c=0; c<128; c++) {
 		fnt_big[0][c] = scale_glyph(fnt_orig[0][c], BIG_SCALE);
 		fnt_big[1][c] = scale_glyph(fnt_orig[1][c], BIG_SCALE);
-		if(fnt_char[FONT_BOLD][c])
-			fnt_score[c] = scale_glyph(fnt_char[FONT_BOLD][c], SCORE_SCALE);
 		fnt_med[0][c] = scale_glyph(fnt_orig[0][c], MED_SCALE);
 		fnt_med[1][c] = scale_glyph(fnt_orig[1][c], MED_SCALE);
 	}
@@ -256,25 +251,6 @@ void font_write_med(SDL_Surface *bmp, int sel, int x, int y, char *str) {
 			SDL_BlitSurface(g, NULL, bmp, &r);
 		}
 		x += MED_SPACING;
-	}
-}
-
-int font_length_score(char *str) {
-	return (int)strlen(str) * SCORE_SPACING;
-}
-
-void font_write_score(SDL_Surface *bmp, int x, int y, char *str) {
-	for(unsigned int c=0; c<strlen(str); c++) {
-		SDL_Surface *g = fnt_score[(int)str[c]];
-		if(g) {
-			SDL_Rect r;
-			r.x = x;
-			r.y = y;
-			r.w = g->w;
-			r.h = g->h;
-			SDL_BlitSurface(g, NULL, bmp, &r);
-		}
-		x += SCORE_SPACING;
 	}
 }
 

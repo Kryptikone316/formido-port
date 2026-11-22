@@ -101,7 +101,7 @@ void HISCORE_LIST::input_name(int place) {
 				str[pos] = '\0';
 			}
 			else if(key[SDLK_RETURN]) {
-				if(str[pos] != '\0' && pos < NAME_LEN-1)
+				if(str[pos] != '\0' && pos < 19)		// (names of up to 20 letters: longer ones would run into the kills)
 					pos++;
 				str[pos] = '\0';
 				if(pos > 0 && str[0] != ' ')
@@ -298,7 +298,13 @@ void HISCORE_LIST::draw(SDL_Surface *bmp, int x, int y, int place) {
 
 
 		// Dots
-		for(unsigned int c=0; c<25; c++) {
+#ifdef SF3500
+		// the fonts are 20 % wider here: 21 columns of dots end where the kills start (25 ran past the panel onto the title)
+		const unsigned int DOT_COLS = 21;
+#else
+		const unsigned int DOT_COLS = 25;
+#endif
+		for(unsigned int c=0; c<DOT_COLS; c++) {
 			if(c < strlen(names[f]))
 				str[c] = ' ';
 			else

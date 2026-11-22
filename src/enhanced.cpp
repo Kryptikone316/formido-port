@@ -1014,7 +1014,7 @@ static void cells_update(int here) {
 			if(i != here) {
 				static const char *WORD[4] = { "", "light", "average", "heavy" };
 				char buf[64];
-				snprintf(buf, sizeof(buf), "a new %s cell has formed: %s guard", DIR_NAME[i], WORD[garrison_level(i)]);
+				snprintf(buf, sizeof(buf), "new %s cell: %s guard", DIR_NAME[i], WORD[garrison_level(i)]);
 				set_message(buf);
 			}
 		}
@@ -1063,7 +1063,7 @@ static void cells_update(int here) {
 				pcell[here].present = false;
 				pcell[here].back_tick = enhanced_ticks + 60 * 60 * 10;	// until it is delivered
 				char buf[64];
-				snprintf(buf, sizeof(buf), "%s cell taken: bring it to the platform", DIR_NAME[here]);
+				snprintf(buf, sizeof(buf), "%s cell: carry it to the platform", DIR_NAME[here]);
 				set_message(buf);
 				if(config.sound)
 					Mix_PlayChannel(-1, snd_power_up, 0);
@@ -1711,7 +1711,7 @@ static void bunker_step_out() {
 		player.dirx = player.diry = 0;
 		bunker.inside = false;
 		bunker.relock = true;
-		set_message("out of the bunker: walk back in to use it");
+		set_message("stepped out: walk back in to use it");
 		return;
 	}
 	set_message("no room to step out here");
@@ -1750,7 +1750,7 @@ static void bunker_update() {
 		if(!bunker.relock && d < BUNKER_ENTER) {
 			bunker.inside = true;
 			bunker_regen = 0;
-			set_message("inside the bunker: fire away, R1 steps out");
+			set_message("in the bunker: fire away, R1 to leave");
 		}
 		// (an empty bunker stands until its integrity is gone: it only fatigues, below)
 	}
@@ -1941,7 +1941,7 @@ static void rank_count_kill(int type) {
 		if(rank_level > rank_best)
 			rank_best = rank_level;
 		char line[64];
-		snprintf(line, sizeof(line), "rank up: %s  commando bonus +%d%%", PLAYER_RANK_NAME[rank_level], (int)(rank_level * tune.rank_bonus * 100 + 0.5f));
+		snprintf(line, sizeof(line), "rank up: %s  bonus +%d%%", PLAYER_RANK_NAME[rank_level], (int)(rank_level * tune.rank_bonus * 100 + 0.5f));
 		set_message(line);
 	}
 }
@@ -2010,13 +2010,15 @@ static void rank_damaged() {
 }
 
 static void rank_draw(SDL_Surface *bmp) {
+	// short, so that it stays clear of the boss bar in the middle of the top (which starts at x=170)
 	char line[96];
 	int bonus = (int)(rank_level * tune.rank_bonus * rank_focus() * 100 + 0.5f);
-	if(rank_level >= (int)tune.rank_max)
-		snprintf(line, sizeof(line), "%s  +%d%%", PLAYER_RANK_NAME[rank_level], bonus);
-	else
-		snprintf(line, sizeof(line), "%s  +%d%%  next %d", PLAYER_RANK_NAME[rank_level], bonus, (int)tune.rank_kills - rank_acc);
-	font_write(bmp, FONT_NORMAL, 10, 38, line);
+	snprintf(line, sizeof(line), "%s +%d%%", PLAYER_RANK_NAME[rank_level], bonus);
+	font_write(bmp, FONT_NORMAL, 10, 34, line);
+	if(rank_level < (int)tune.rank_max) {
+		snprintf(line, sizeof(line), "next %d", (int)tune.rank_kills - rank_acc);
+		font_write(bmp, FONT_NORMAL, 10, 53, line);
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -2215,7 +2217,7 @@ static void flame_update() {
 			flame_fuel = (int)(tune.flame_fuel_seconds * 60);
 			flame_hold_until = enhanced_ticks + (long)(tune.flame_hold_seconds * 60);
 			flame_kill_count = 0;
-			set_message("flamethrower: short range, fuel is limited");
+			set_message("flamethrower: short range, limited fuel");
 			if(config.sound)
 				Mix_PlayChannel(-1, snd_power_up, 0);
 		}
@@ -3222,7 +3224,7 @@ static void tyrant_update() {
 			if(getenv("FORMIDO_TYRANT"))
 				ty_warn = 60 * 4;
 #endif
-			set_message("the ground trembles: something vast is stirring");
+			set_message("the ground trembles: something stirs");
 			msg_timer = 60 * 6;
 		}
 	}
@@ -4294,8 +4296,20 @@ void enhanced_draw(SDL_Surface *bmp) {
 
 	// the hive's message
 	if(msg_timer > 0 && (msg_timer > 40 || (msg_timer / 4) % 2 == 0)) {
-		int w = font_length(FONT_NORMAL2, msg);
-		font_write(bmp, FONT_NORMAL2, (SCREEN_W - w) / 2, 10, msg);
+		// one line, centred, but kept left of the score counter (its left edge is at x=502) and clear of the screen's edges
+		char shown[64];
+		snprintf(shown, sizeof(shown), "%s", msg);
+		const int RIGHT = 494, LEFT = 8;
+		int maxc = (RIGHT - LEFT) / font_length(FONT_NORMAL2, (char *)"m");
+		if((int)strlen(shown) > maxc)
+			shown[maxc] = '\0';
+		int w = font_length(FONT_NORMAL2, shown);
+		int x = (SCREEN_W - w) / 2;
+		if(x + w > RIGHT)
+			x = RIGHT - w;
+		if(x < LEFT)
+			x = LEFT;
+		font_write(bmp, FONT_NORMAL2, x, 10, shown);
 	}
 }
 

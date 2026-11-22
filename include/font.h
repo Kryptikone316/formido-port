@@ -54,8 +54,6 @@ void load_big_font();
 void font_write_big(SDL_Surface *bmp, int sel, int x, int y, char *str);
 void font_write_med(SDL_Surface *bmp, int sel, int x, int y, char *str);	// the settings screen's size
 int font_length_med(char *str);
-void font_write_score(SDL_Surface *bmp, int x, int y, char *str);	// the score counter (smaller than the bold font)
-int font_length_score(char *str);
 #endif
 
 // Return string length using a specifig font

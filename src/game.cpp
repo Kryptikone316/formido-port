@@ -369,7 +369,7 @@ void draw(SDL_Surface *bmp) {
 	sprintf(kill_str, "%03d", kills);
 #ifdef SF3500
 	// a little smaller, and moved left of the corner: the device's battery icon sits over the top right
-	font_write_score(bmp, SCREEN_W-78-font_length_score(kill_str), 6, kill_str);
+	font_write(bmp, FONT_BOLD, SCREEN_W-78-font_length(FONT_BOLD, kill_str), 5, kill_str);
 #else
 	font_write(bmp, FONT_BOLD, SCREEN_W-22-font_length(FONT_BOLD, kill_str), 5, kill_str);
 #endif
