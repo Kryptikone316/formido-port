@@ -196,10 +196,10 @@ what made swarms hard to get away from.
 
 ## Bot test runs
 
-`build_native.sh` makes an x86-64 test build with the test hooks, and `run_bots.sh native <batch> <skill> <first seed> <count>`
-plays bot games with it at full speed (`FORMIDO_BOT=<skill 0-3>`, `FORMIDO_SEED`, `FORMIDO_FAST`); one `RESULT` line per game
-(seconds survived, kills by rank, Tyrants, peak bugs). `tools/bot_stats.py` summarises them. The bots stay on the platform screen
-and do not use the arms. The x86-64 build is for statistics only: the device's CPU and maths differ.
+A bot plays the enhanced game through the same button path as a person, which is how the settings were tuned: see
+`TUNING-NOTES.md` for what it showed and what came of it. `build_native.sh` makes an x86-64 test build with the test hooks
+and `run_bots.sh native <batch> <skill> <first seed> <count>` plays bot games with it at full speed; `tools/bot_stats.py`
+summarises the results. The x86-64 build is for statistics only: the device's CPU and maths differ.
 
 ## Collision stress test
 
