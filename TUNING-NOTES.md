@@ -18,16 +18,14 @@ are not kept here; the test hooks and scripts that produced them are (`run_bots.
 - **Healing:** the platform's healing rate made little difference to the bots beyond about 10 hit points a second, and the bots
   could not do what a person does (roam, retreat to the platform below some health, heal while still fighting). Bites arrive
   in bursts when several bugs are in contact, so a player at half health can be dead within seconds. Whether the retreat-and-heal
-  rhythm works was left for play on the device, where it was found to work.
+  rhythm works is a question for play on the device, not for the bots.
 - **Bug pile-ups at the edge of a screen.** The runs showed most of the bugs far from the player standing still: bugs
   waiting just off-screen blocked the ones entering, and arrived in a clump. That was fixed (off-screen bugs no longer block
   on-screen ones, and bugs steer round rock), which also made the game harder than the first runs suggested.
-- **A bug in the original:** none was found in the game itself by the bots, but the collision stress test found hang spots in
-  the arm maps, which were fixed (see the README).
 
 ## What went into the settings file
 
-`formido_tuning.cfg` holds every number (about 70), each with its default, its range and a line saying what it does. The
+`formido_tuning.cfg` holds every number (74 of them), each with its default, its range and a line saying what it does. The
 defaults the testing settled on, in plain terms:
 
 - the platform heals 10 hit points a second whenever you are hurt and standing on it, with no waiting (15 with a south cell);
