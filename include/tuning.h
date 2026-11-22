@@ -67,6 +67,10 @@
 	X(flame_damage,              48.0f,  1.0f,  500.0f,  "flamethrower", "damage to every bug in the cone per burst (the gun does 25 per shot)") \
 	X(flame_fire_delay_ticks,    3.0f,   1.0f,   10.0f,  "flamethrower", "ticks between bursts") \
 	X(flame_tyrant_share,        0.15f,  0.00f,   1.00f, "flamethrower", "share of its damage the flame does to the Hive Tyrant") \
+	X(rank_kills,                15.0f,  3.0f,  200.0f,  "rank",      "kills it takes to earn the next rank (a hit taken starts it over)") \
+	X(rank_max,                  5.0f,   1.0f,    8.0f,  "rank",      "highest rank") \
+	X(rank_bonus,                0.04f,  0.00f,   0.50f, "rank",      "damage bonus of the gun and flamethrower for each rank (0.04 = +4 %)") \
+	X(rank_wound_floor,          0.00f,  0.00f,   0.90f, "rank",      "share of full health at or below which the bonus is gone (0 = it fades in step with your health)") \
 	X(ammo_rounds,               160.0f, 10.0f, 999.0f,  "items",     "rounds in a load of special ammunition") \
 	X(ammo_seconds,              45.0f,  5.0f,  600.0f,  "items",     "special rounds spoil after this many seconds") \
 	X(ammo_bonus_scale,          1.00f,  0.00f,   3.00f, "items",     "scales the bonus damage of special rounds (0 = none, 2 = twice the bonus)") \

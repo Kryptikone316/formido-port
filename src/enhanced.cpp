@@ -1899,6 +1899,127 @@ static void player_status_tick() {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+// Rank. Every rank_kills kills earns a rank, each worth a small bonus to the gun's and the flamethrower's damage (knowing
+// where to hit a bug). Taking any damage starts it over: it is not forgotten, the player is just thinking of their wounds.
+// And while wounded the bonus counts for less, in step with the health that is left. Healing on the platform does not
+// start it over.
+
+static int rank_level = 0, rank_acc = 0, rank_best = 0;
+static long rank_flash_until = 0;
+static const char *PLAYER_RANK_NAME[9] = { "rookie", "steady", "sharp", "seasoned", "veteran", "commando", "commando II", "commando III", "commando IV" };
+
+// how much of the bonus counts at the player's present health (1 at full health)
+static float rank_focus() {
+	float frac = player.health / 200.0f;
+	float floor_ = tune.rank_wound_floor;
+	float f = (frac - floor_) / (1.0f - floor_);
+	return f < 0 ? 0.0f : (f > 1 ? 1.0f : f);
+}
+
+float enhanced_rank_mult() {
+	return 1.0f + rank_level * tune.rank_bonus * rank_focus();
+}
+
+int enhanced_shot_damage(int bug_rank) {
+	return (int)(25.0f * enhanced_ammo_mult(bug_rank) * enhanced_rank_mult() + RANDF(0, 1));		// whole points on average
+}
+
+static void rank_reset() {
+	rank_level = rank_acc = 0;
+}
+
+static void rank_count_kill(int type) {
+	if(type == CT_PHANTOM || !player.ok || rank_level >= (int)tune.rank_max)
+		return;
+	if(++rank_acc >= (int)tune.rank_kills) {
+		rank_acc = 0;
+		rank_level++;
+#ifdef FORMIDO_TESTHOOKS
+		fprintf(stderr, "rank: up to %d at tick %ld\n", rank_level, enhanced_ticks);
+#endif
+		rank_flash_until = enhanced_ticks + 50;
+		if(rank_level > rank_best)
+			rank_best = rank_level;
+		char line[64];
+		snprintf(line, sizeof(line), "rank up: %s  commando bonus +%d%%", PLAYER_RANK_NAME[rank_level], (int)(rank_level * tune.rank_bonus * 100 + 0.5f));
+		set_message(line);
+	}
+}
+
+// Stripes over the player's head, a bit like a soldier's: up to three chevrons, then rockers, then stars for the highest
+// ranks. Bronze at first, then silver, then gold; they dim while the player is wounded (the bonus counts for less) and
+// flash when a rank is earned.
+static void rank_badge_draw(SDL_Surface *bmp, int cx, int bottom) {
+	if(rank_level <= 0)
+		return;
+	int chevrons = rank_level < 3 ? rank_level : 3;
+	int rockers = rank_level > 3 ? (rank_level - 3 < 2 ? rank_level - 3 : 2) : 0;
+	int stars = rank_level > 5 ? rank_level - 5 : 0;
+	int cr, cg, cb;
+	if(rank_level <= 2)      { cr = 205; cg = 127; cb = 50; }
+	else if(rank_level <= 4) { cr = 205; cg = 212; cb = 224; }
+	else                     { cr = 255; cg = 215; cb = 80; }
+	float dim = 0.40f + 0.60f * rank_focus();
+	cr = (int)(cr * dim); cg = (int)(cg * dim); cb = (int)(cb * dim);
+	if(enhanced_ticks < rank_flash_until && ((rank_flash_until - enhanced_ticks) / 5) % 2 == 0) {
+		cr = 255; cg = 255; cb = 240;
+	}
+	int y = bottom;
+	// rockers (curved bars) at the bottom
+	for(int r=0; r<rockers; r++) {
+		for(int pass=0; pass<2; pass++) {
+			int o = pass == 0 ? 1 : 0;
+			for(int k=-5; k<=5; k++) {
+				int dy = (k * k) / 12;				// a shallow smile
+				rect(bmp, cx + k - o, y - 2 + dy - o, 2 + o * 2, 2 + o * 2, pass == 0 ? 28 : cr, pass == 0 ? 20 : cg, pass == 0 ? 10 : cb);
+			}
+		}
+		y -= 4;
+	}
+	// chevrons, pointing up
+	for(int c=0; c<chevrons; c++) {
+		for(int pass=0; pass<2; pass++) {
+			int o = pass == 0 ? 1 : 0;
+			for(int k=0; k<=5; k++) {
+				rect(bmp, cx - k - 1 - o, y - 5 + k - o, 2 + o * 2, 2 + o * 2, pass == 0 ? 28 : cr, pass == 0 ? 20 : cg, pass == 0 ? 10 : cb);
+				rect(bmp, cx + k - 1 - o, y - 5 + k - o, 2 + o * 2, 2 + o * 2, pass == 0 ? 28 : cr, pass == 0 ? 20 : cg, pass == 0 ? 10 : cb);
+			}
+		}
+		y -= 4;
+	}
+	// stars: small diamonds
+	for(int st=0; st<stars; st++) {
+		int sx = cx - (stars - 1) * 5 + st * 10;
+		for(int pass=0; pass<2; pass++) {
+			int o = pass == 0 ? 1 : 0;
+			rect(bmp, sx - 1 - o, y - 6 - o, 2 + o * 2, 6 + o * 2, pass == 0 ? 28 : cr, pass == 0 ? 20 : cg, pass == 0 ? 10 : cb);
+			rect(bmp, sx - 3 - o, y - 4 - o, 6 + o * 2, 2 + o * 2, pass == 0 ? 28 : cr, pass == 0 ? 20 : cg, pass == 0 ? 10 : cb);
+		}
+	}
+}
+
+// a hit taken
+static void rank_damaged() {
+	if(rank_level > 0) {
+		set_message("rank lost: wounds break your focus");
+#ifdef FORMIDO_TESTHOOKS
+		fprintf(stderr, "rank: lost rank %d at tick %ld\n", rank_level, enhanced_ticks);
+#endif
+	}
+	rank_reset();
+}
+
+static void rank_draw(SDL_Surface *bmp) {
+	char line[96];
+	int bonus = (int)(rank_level * tune.rank_bonus * rank_focus() * 100 + 0.5f);
+	if(rank_level >= (int)tune.rank_max)
+		snprintf(line, sizeof(line), "%s  +%d%%", PLAYER_RANK_NAME[rank_level], bonus);
+	else
+		snprintf(line, sizeof(line), "%s  +%d%%  next %d", PLAYER_RANK_NAME[rank_level], bonus, (int)tune.rank_kills - rank_acc);
+	font_write(bmp, FONT_NORMAL, 10, 38, line);
+}
+
+///////////////////////////////////////////////////////////////////////////////
 // Tracer rounds: every third shot of the main gun (the flamethrower has no tracers) is drawn as a short bright streak
 // that flies from the muzzle to where the shot ended, a few frames long. The shot itself still lands at once.
 
@@ -2148,7 +2269,7 @@ void enhanced_flame_fire() {
 				blocked = true;
 		if(blocked)
 			continue;
-		int dmg = (int)tune.flame_damage;
+		int dmg = (int)(tune.flame_damage * enhanced_rank_mult() + RANDF(0, 1));
 		if(c->type == CT_TYRANT) {
 			dmg = (int)(dmg * tune.flame_tyrant_share + 0.5f);
 			if(dmg < 1)
@@ -3602,8 +3723,10 @@ void enhanced_update() {
 		switch_cell(pcx, pcy);
 
 	// 2. a little health back on the stone platform, when nothing has bitten for a while
-	if(player.health < prev_health)
+	if(player.health < prev_health) {
 		last_damage_tick = enhanced_ticks;
+		rank_damaged();
+	}
 	prev_health = player.health;
 	if(player.ok && gx == 0 && gy == 0) {
 		float dx = (player.x - CELL_W / 2) / 100.0f, dy = (player.y - CELL_H / 2) / 112.0f;
@@ -3727,6 +3850,9 @@ void enhanced_begin() {
 		enhanced_ticks = (long)atoi(getenv("FORMIDO_T0")) * 60;
 #endif
 	last_damage_tick = 0;
+	rank_reset();
+	rank_best = 0;
+	rank_flash_until = 0;
 	prev_health = 200;
 	regen_acc = 0;
 	hist_n = 0;
@@ -3886,6 +4012,8 @@ void enhanced_begin() {
 		traps[2].ok = true; traps[2].type = TRAP_GLUE; traps[2].x = 520; traps[2].y = 250; traps[2].integrity = 150; traps[2].life = 60 * 600;
 		traps[3].ok = true; traps[3].type = TRAP_NAPALM; traps[3].x = 400; traps[3].y = 250; traps[3].integrity = 420; traps[3].life = 60 * 600;
 	}
+	if(getenv("FORMIDO_RANK"))			// start at this rank
+		rank_level = atoi(getenv("FORMIDO_RANK"));
 	if(getenv("FORMIDO_FLAME")) {		// start with a flamethrower, and a canister lying ahead
 		flame_fuel = (int)(tune.flame_fuel_seconds * 60);
 		flame_hold_until = enhanced_ticks + (long)(tune.flame_hold_seconds * 60);
@@ -4036,6 +4164,7 @@ static void draw_world_overlays(SDL_Surface *bmp) {
 
 	// badges over the player
 	enhanced_draw_badges(bmp, (int)player.x, (int)player.y - 36, player_burn > 0, player_bleed > 0, player_slow > 0, player_stun > 0);
+	rank_badge_draw(bmp, (int)player.x, (int)player.y - 42);
 
 	tyrant_draw_over(bmp);
 
@@ -4141,6 +4270,7 @@ void enhanced_draw(SDL_Surface *bmp) {
 		rect(bmp, 8, SCREEN_H - 94, 7, 7, TRAP_COL[trap_loaded][0], TRAP_COL[trap_loaded][1], TRAP_COL[trap_loaded][2]);
 		font_write(bmp, FONT_NORMAL, 20, SCREEN_H - 99, line);
 	}
+	rank_draw(bmp);
 	if(flame_fuel > 0) {
 		char line[64];
 		int fuel = (int)((flame_fuel + 59) / 60);
@@ -4240,6 +4370,7 @@ void enhanced_bug_killed(int type, float x, float y) {
 	if(type >= 0 && type < NUM_CTYPES)
 		stat_kills[type]++;
 	flame_count_kill(type, x, y);
+	rank_count_kill(type);
 }
 
 // a scaled copy of (a part of) a sprite into box x box around (cx, cy); nearest neighbour, colour key and alpha respected
@@ -4392,8 +4523,8 @@ void enhanced_show_legend() {
 		int secs = (int)(enhanced_ticks / 60);
 		char l1[100], l2[100];
 		snprintf(l1, sizeof(l1), "time %d:%02d  score %d  tyrants %d  hive %d  cells %d", secs / 60, secs % 60, kills, stat_tyrants, hive_level, stat_cells);
-		snprintf(l2, sizeof(l2), "drones %d runners %d strikers %d brutes %d burrow %d",
-			stat_kills[CT_DRONE], stat_kills[CT_RUNNER], stat_kills[CT_STRIKER], stat_kills[CT_BRUTE], stat_kills[CT_BURROWER] + stat_kills[CT_STUNNER]);
+		snprintf(l2, sizeof(l2), "drones %d runners %d strikers %d brutes %d burrow %d  best rank %d",
+			stat_kills[CT_DRONE], stat_kills[CT_RUNNER], stat_kills[CT_STRIKER], stat_kills[CT_BRUTE], stat_kills[CT_BURROWER] + stat_kills[CT_STUNNER], rank_best);
 		font_write(bmp, FONT_NORMAL2, 14, 400, l1);
 		font_write(bmp, FONT_NORMAL, 14, 424, l2);
 	}

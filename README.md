@@ -112,6 +112,13 @@ The main menu has **play classic game** (the original, untouched) and **play enh
   Inside the bunker the D-pad aims instead of walking (all eight directions, diagonals included, even while firing);
   L1 plus the face buttons still work, and with fire held and nothing pressed the bunker's gun swings to the nearest
   bug on its own, so nothing reaches it from a blind corner.
+- **Rank (the commando bonus).** Every 15 kills without taking damage earns a rank, up to 5 (rookie, steady, sharp, seasoned,
+  veteran, commando), and each rank adds 4 % to the damage of the main gun and the flamethrower (knowing where to hit a
+  bug), so +20 % at the top. Stripes over the player's head show the rank: bronze chevrons at first, then silver, then
+  gold, with rockers and stars beyond three chevrons if you raise the maximum; they flash when a rank is earned and dim
+  while you are wounded. Any damage taken (a bite, burning, a thorn) starts it over from rookie; healing does not. And
+  the more wounded you are, the less of the bonus counts: at half health you get half of it. The rank and the kills to
+  the next one show at the top left. The knobs are `rank_kills`, `rank_max`, `rank_bonus` and `rank_wound_floor`.
 - **Tracer rounds.** About every third round of the main gun is drawn as a bright streak flying from the muzzle to where it
   ended (the enhanced game; the gun's reach is unchanged, right across the screen).
 - **Flamethrower.** After a number of kills (60 by default, counted again from each pickup) a red canister drops where the

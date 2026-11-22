@@ -130,6 +130,11 @@ void enhanced_draw_badges(SDL_Surface *bmp, int cx, int top, bool burning, bool 
 bool enhanced_player_held();
 
 // The flamethrower: a canister drops after a number of kills; while it lasts, firing sprays a cone of flame instead of bullets
+// Rank: every few kills without taking a hit earns a small damage bonus; any damage taken starts it over, and the more
+// wounded the player is, the less of the bonus counts
+float enhanced_rank_mult();
+int enhanced_shot_damage(int bug_rank);		// the main gun's damage against a bug of this rank (rank bonus and special ammunition)
+
 // Tracer rounds: every third shot of the main gun is drawn as a bright streak from the muzzle to where it ended
 void enhanced_tracer(float x0, float y0, float x1, float y1);
 
