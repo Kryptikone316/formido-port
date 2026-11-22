@@ -485,7 +485,7 @@ int show_menu(int menu_id) {
 			ay = 243 + menu_item * 37;
 		}
 		else if(menu_id == MENU_ID_SETTINGS) {
-			ax = 288;
+			ax = 278;
 #ifdef SF3500
 			static const int row_y[7] = { 164, 205, 246, 287, 328, 408, 438 };	// controls, laser, frame limit, credits, reset, volume, accept
 			ay = row_y[menu_item - MENU_OPT_CONTROLS] - 4;
@@ -525,45 +525,45 @@ int show_menu(int menu_id) {
 			// Rows drawn with the game's own handwriting fonts on the cleaned panel
 			static const int row_y[7] = { 164, 205, 246, 287, 328, 408, 438 };
 			// the values are right-aligned to the panel's edge; labels and values use the larger menu font
-			#define VALX(str) (602 - font_length_med((char *)(str)))
+			#define VALX(str) (590 - font_length_med((char *)(str)))
 			#define SEL(item) (menu_item == (item) ? 1 : 0)
-			font_write_med(screen, 1, 322, 138, (char *)"game settings");
+			font_write_med(screen, 1, 312, 138, (char *)"game settings");
 
 			char *ctl = (char *)(config.controls ? "twin stick" : "classic");
-			font_write_med(screen, SEL(MENU_OPT_CONTROLS), 322, row_y[0], (char *)"controls");
+			font_write_med(screen, SEL(MENU_OPT_CONTROLS), 312, row_y[0], (char *)"controls");
 			font_write_med(screen, SEL(MENU_OPT_CONTROLS), VALX(ctl), row_y[0], ctl);
-			font_write(screen, FONT_NORMAL, 322, row_y[0]+23, (char *)(config.controls ? "L1 + A B X Y to aim" : "turn L/R, A to fire"));
+			font_write(screen, FONT_NORMAL, 312, row_y[0]+23, (char *)(config.controls ? "L1 + A B X Y to aim" : "turn L/R, A to fire"));
 
 			static char *laser_words[3] = { (char *)"off", (char *)"enhanced", (char *)"always" };
-			font_write_med(screen, SEL(MENU_OPT_LASER), 322, row_y[1], (char *)"laser sight");
+			font_write_med(screen, SEL(MENU_OPT_LASER), 312, row_y[1], (char *)"laser sight");
 			font_write_med(screen, SEL(MENU_OPT_LASER), VALX(laser_words[config.laser]), row_y[1], laser_words[config.laser]);
-			font_write(screen, FONT_NORMAL, 322, row_y[1]+23, (char *)"a red line shows aim");
+			font_write(screen, FONT_NORMAL, 312, row_y[1]+23, (char *)"a red line shows aim");
 
 			char buf[32];
 			sprintf(buf, "%d fps", config.fps_cap);
-			font_write_med(screen, SEL(MENU_OPT_FPS), 322, row_y[2], (char *)"frame limit");
+			font_write_med(screen, SEL(MENU_OPT_FPS), 312, row_y[2], (char *)"frame limit");
 			font_write_med(screen, SEL(MENU_OPT_FPS), VALX(buf), row_y[2], buf);
-			font_write(screen, FONT_NORMAL, 322, row_y[2]+23, (char *)(config.fps_cap == 20 ? "easy on slow devices" : (config.fps_cap == 30 ? "steady: the default" : "faster, may slow down")));
+			font_write(screen, FONT_NORMAL, 312, row_y[2]+23, (char *)(config.fps_cap == 20 ? "easy on slow devices" : (config.fps_cap == 30 ? "steady: the default" : "faster, may slow down")));
 
 			char *cr = (char *)(config.credits ? "on" : "off");
-			font_write_med(screen, SEL(MENU_OPT_CREDITS), 322, row_y[3], (char *)"credits on exit");
+			font_write_med(screen, SEL(MENU_OPT_CREDITS), 312, row_y[3], (char *)"credits on exit");
 			font_write_med(screen, SEL(MENU_OPT_CREDITS), VALX(cr), row_y[3], cr);
-			font_write(screen, FONT_NORMAL, 322, row_y[3]+23, (char *)"select+start leaves now");
+			font_write(screen, FONT_NORMAL, 312, row_y[3]+23, (char *)"select+start leaves now");
 
 			{
 				char *rs = (char *)(reset_armed ? "select again: erase" : (reset_done > 0 ? "scores erased" : "both lists"));
-				font_write_med(screen, SEL(MENU_OPT_RESET), 322, row_y[4], (char *)"reset hall of fame");
-				font_write(screen, FONT_NORMAL, 322, row_y[4]+23, rs);
+				font_write_med(screen, SEL(MENU_OPT_RESET), 312, row_y[4], (char *)"reset hall of fame");
+				font_write(screen, FONT_NORMAL, 312, row_y[4]+23, rs);
 			}
-			font_write_med(screen, SEL(MENU_MUS_VOLUME), 322, row_y[5]-28, (char *)"music volume");		// (slider below it)
-			font_write_med(screen, SEL(MENU_ACCEPT), 322, row_y[6], (char *)"accept settings");
+			font_write_med(screen, SEL(MENU_MUS_VOLUME), 312, row_y[5]-28, (char *)"music volume");		// (slider below it)
+			font_write_med(screen, SEL(MENU_ACCEPT), 312, row_y[6], (char *)"accept settings");
 			{
 				// The volume slider
 				float vol = config.music_vol / 128.0;
 				int bw = energy_bar[0]->w;
 				for(int i=0; i<15; i++) {
 					SDL_Rect r;
-					r.x = 322+i*bw;
+					r.x = 312+i*bw;
 					r.y = row_y[5]+2;
 					r.w = bw;
 					r.h = energy_bar[0]->h;
@@ -603,8 +603,8 @@ int show_menu(int menu_id) {
 #ifdef SF3500
 			(hof_page ? list_e : list).draw(screen, 10, 10, -1);
 			char *t = (char *)(hof_page ? "< enhanced game >" : "< classic game >");
-			font_write_med(screen, 0, 380, 198, (char *)"left / right: switch");
-			font_write_med(screen, 1, 380, 166, t);
+			font_write_med(screen, 0, 336, 198, (char *)"left / right: switch");
+			font_write_med(screen, 1, 336, 166, t);
 #else
 			list.draw(screen, 10, 10, -1);
 #endif
