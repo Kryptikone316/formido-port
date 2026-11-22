@@ -383,6 +383,15 @@ void PLAYER::shout() {
 void PLAYER::shoot() {
 
 #ifdef SF3500
+	if(enhanced && enhanced_flame_active()) {
+		// the flamethrower: a burst of flame instead of a bullet
+		enhanced_flame_fire();
+		reload = enhanced_reload();
+		return;
+	}
+#endif
+
+#ifdef SF3500
 	if(enhanced)
 		enhanced_ammo_fired();
 #endif
@@ -397,6 +406,7 @@ void PLAYER::shoot() {
 	bx = x+ix;
 	by = y+iy;
 #ifdef SF3500
+	float mzx = bx, mzy = by;			// the muzzle, where a tracer starts
 	if(enhanced) {
 		// the shot is traced from the middle of the body: from the muzzle, 28 pixels out, it skipped every bug pressed
 		// against the player (the ones that swarm the bunker)
@@ -482,6 +492,8 @@ void PLAYER::shoot() {
 	}
 
 #ifdef SF3500
+	if(enhanced)
+		enhanced_tracer(mzx, mzy, bx, by);		// every third round of a burst shows as a tracer
 	reload = enhanced ? enhanced_reload() : 5;
 #else
 	reload = 5;

@@ -58,6 +58,15 @@
 	X(cell_respawn_min_seconds,  100.0f, 10.0f, 900.0f,  "cells",     "a delivered cell returns after at least this many seconds ...") \
 	X(cell_respawn_max_seconds,  160.0f, 10.0f, 900.0f,  "cells",     "... and at most this many") \
 	X(pylon_mode_seconds,        120.0f, 10.0f, 900.0f,  "cells",     "how long a delivered cell sets the pylons' mode") \
+	X(flame_every_kills,         60.0f,  10.0f, 500.0f,  "flamethrower", "a flamethrower canister drops after this many kills (counted again from the pickup)") \
+	X(flame_fuel_seconds,        7.0f,   1.0f,   60.0f,  "flamethrower", "seconds of firing in a canister") \
+	X(flame_hold_seconds,        45.0f,  5.0f,  600.0f,  "flamethrower", "a canister you carry spoils after this many seconds, fired or not") \
+	X(flame_ground_seconds,      40.0f,  5.0f,  300.0f,  "flamethrower", "how long a dropped canister lies about") \
+	X(flame_range,               190.0f, 60.0f, 300.0f,  "flamethrower", "reach of the flame in pixels: short to medium (the gun reaches across the screen)") \
+	X(flame_cone_degrees,        56.0f,  10.0f, 120.0f,  "flamethrower", "width of the cone of flame in degrees") \
+	X(flame_damage,              48.0f,  1.0f,  500.0f,  "flamethrower", "damage to every bug in the cone per burst (the gun does 25 per shot)") \
+	X(flame_fire_delay_ticks,    3.0f,   1.0f,   10.0f,  "flamethrower", "ticks between bursts") \
+	X(flame_tyrant_share,        0.15f,  0.00f,   1.00f, "flamethrower", "share of its damage the flame does to the Hive Tyrant") \
 	X(ammo_rounds,               160.0f, 10.0f, 999.0f,  "items",     "rounds in a load of special ammunition") \
 	X(ammo_seconds,              45.0f,  5.0f,  600.0f,  "items",     "special rounds spoil after this many seconds") \
 	X(ammo_bonus_scale,          1.00f,  0.00f,   3.00f, "items",     "scales the bonus damage of special rounds (0 = none, 2 = twice the bonus)") \

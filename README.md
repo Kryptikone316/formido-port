@@ -112,6 +112,14 @@ The main menu has **play classic game** (the original, untouched) and **play enh
   Inside the bunker the D-pad aims instead of walking (all eight directions, diagonals included, even while firing);
   L1 plus the face buttons still work, and with fire held and nothing pressed the bunker's gun swings to the nearest
   bug on its own, so nothing reaches it from a blind corner.
+- **Tracer rounds.** About every third round of the main gun is drawn as a bright streak flying from the muzzle to where it
+  ended (the enhanced game; the gun's reach is unchanged, right across the screen).
+- **Flamethrower.** After a number of kills (60 by default, counted again from each pickup) a red canister drops where the
+  last bug fell and lies about for 40 seconds. Walk over it and the gun becomes a flamethrower: fire sprays a cone of
+  flame about 190 pixels long that does heavy damage (48 per burst, against the gun's 25) to every bug inside it, sets
+  them burning, and is stopped by rock. It carries 7 seconds of fuel (of firing) and spoils 45 seconds after the pickup,
+  fired or not; then the usual gun is back. Against the Hive Tyrant it does only 15 % of its damage. All of it is in
+  `formido_tuning.cfg` (`flame_*`).
 - **Laser sight.** A thin red line from the muzzle along the line of fire (up to 260 pixels, ending at a wall, crag or bug,
   with a small dot). Settings: off, enhanced (the default: only in the enhanced game) or always.
 - **No dead-end slots.** The arms' collision is cleaned so that every gap is at least body-wide (about 40 pixels): the

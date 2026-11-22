@@ -107,7 +107,7 @@ int enhanced_reload();											// ticks between shots (shorter with the boon)
 void enhanced_show_legend();
 void enhanced_phantom_slain(float x, float y);	// a hallucination was killed: it may leave a healing plant
 bool enhanced_phantom_hidden(CRITTER *c);		// phantoms flicker: skipped in this frame's drawing
-void enhanced_bug_killed(int type);			// counts kills per rank for the stats strip
+void enhanced_bug_killed(int type, float x = 0, float y = 0);			// counts kills per rank for the stats strip
 
 #ifdef FORMIDO_TESTHOOKS
 void enhanced_bot_report();			// test builds: print the result line of a bot run
@@ -128,6 +128,13 @@ void enhanced_draw_badges(SDL_Surface *bmp, int cx, int top, bool burning, bool 
 
 // The player cannot walk (inside the bunker, or stunned by a burrower); aiming and firing still work
 bool enhanced_player_held();
+
+// The flamethrower: a canister drops after a number of kills; while it lasts, firing sprays a cone of flame instead of bullets
+// Tracer rounds: every third shot of the main gun is drawn as a bright streak from the muzzle to where it ended
+void enhanced_tracer(float x0, float y0, float x1, float y1);
+
+bool enhanced_flame_active();
+void enhanced_flame_fire();
 
 // Special ammunition (dropped in the arms): damage factor of the player's current rounds against a bug rank,
 // to be called when a round is fired and when it hits

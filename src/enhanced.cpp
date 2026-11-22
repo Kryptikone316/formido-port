@@ -1459,6 +1459,7 @@ static void rect(SDL_Surface *bmp, int x, int y, int w, int h, int r, int g, int
 #define NUM_TRAPS	3
 static void traps_draw_under(SDL_Surface *bmp);
 static void tyrant_draw_under(SDL_Surface *bmp);
+static void flame_draw_under(SDL_Surface *bmp);
 void spawn_heal_plant_at(float x, float y);
 
 #define BUNKER_INTEGRITY	(tune.bunker_integrity)
@@ -1781,6 +1782,7 @@ static void bunker_update() {
 
 void enhanced_draw_under(SDL_Surface *bmp) {
 	traps_draw_under(bmp);
+	flame_draw_under(bmp);
 	tyrant_draw_under(bmp);
 	if(!bunker_floor)
 		return;
@@ -1893,6 +1895,296 @@ static void player_status_tick() {
 			player.health -= 1;
 			add_particle(player.x + RANDF(-8, 8), player.y + RANDF(-4, 8), RANDF(-0.3, 0.3), RANDF(0.1, 0.8), 190, 30, 30, (RAND(8,14)));
 		}
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Tracer rounds: every third shot of the main gun (the flamethrower has no tracers) is drawn as a short bright streak
+// that flies from the muzzle to where the shot ended, a few frames long. The shot itself still lands at once.
+
+#define MAX_TRACERS	10
+struct TRACER {
+	bool ok;
+	float x, y, dx, dy;		// start and unit direction
+	float len, pos;			// length of the path, and where the head of the streak is
+};
+static TRACER tracers[MAX_TRACERS];
+static int tracer_shots = 0;
+
+void enhanced_tracer(float x0, float y0, float x1, float y1) {
+	if(++tracer_shots < 3)
+		return;
+	tracer_shots = 0;
+	float dx = x1 - x0, dy = y1 - y0;
+	float len = sqrtf(dx * dx + dy * dy);
+	if(len < 24.0f)
+		return;
+	for(int i=0; i<MAX_TRACERS; i++) {
+		if(!tracers[i].ok) {
+			tracers[i].ok = true;
+			tracers[i].x = x0;
+			tracers[i].y = y0;
+			tracers[i].dx = dx / len;
+			tracers[i].dy = dy / len;
+			tracers[i].len = len;
+			tracers[i].pos = 8.0f;
+			return;
+		}
+	}
+}
+
+static void tracers_update() {
+	for(int i=0; i<MAX_TRACERS; i++) {
+		if(!tracers[i].ok)
+			continue;
+		tracers[i].pos += 40.0f;							// about 2400 pixels a second
+		if(tracers[i].pos - 56.0f > tracers[i].len)
+			tracers[i].ok = false;
+	}
+}
+
+static void tracers_draw(SDL_Surface *bmp) {
+	for(int i=0; i<MAX_TRACERS; i++) {
+		if(!tracers[i].ok)
+			continue;
+		const TRACER &t = tracers[i];
+		float head = t.pos < t.len ? t.pos : t.len;
+		float tail = t.pos - 56.0f;
+		if(tail < 0)
+			tail = 0;
+		for(float d=tail; d<=head; d+=2.0f) {
+			float k = (d - (t.pos - 56.0f)) / 56.0f;			// 0 at the tail, 1 at the head
+			if(k < 0)
+				k = 0;
+			int r = 255, g = (int)(120 + 130 * k), b = (int)(30 + 130 * k * k);
+			int s = k > 0.7f ? 3 : 2;
+			rect(bmp, (int)(t.x + t.dx * d) - s / 2, (int)(t.y + t.dy * d) - s / 2, s, s, r, g, b);
+		}
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// The flamethrower. After a number of kills a canister drops where the last bug fell. Picking it up swaps the gun for a
+// flamethrower: firing sprays a cone of flame that does a great deal of damage to everything in it and sets it
+// burning, but it reaches only a short way. It runs out of fuel (seconds of firing) or spoils (seconds carried), and
+// the usual gun is back.
+
+struct FLAMEPU {
+	bool ok;
+	float x, y;
+	int life;
+};
+static FLAMEPU flame_pu;
+static int flame_fuel = 0;				// ticks of firing left; 0 = no flamethrower
+static long flame_hold_until = 0;
+static int flame_kill_count = 0;
+static int flame_show = 0;				// ticks the flames stay drawn after a burst
+static float flame_dirx = 0, flame_diry = -1, flame_free = 100;
+static SDL_Surface *flame_spr = NULL, *flame_glow = NULL;
+
+#ifdef FORMIDO_TESTHOOKS
+static int flame_hits = 0, flame_killed = 0;
+#endif
+static bool flame_anything() {
+	return flame_pu.ok || flame_fuel > 0;
+}
+
+bool enhanced_flame_active() {
+	return flame_fuel > 0 && enhanced_ticks < flame_hold_until;
+}
+
+static void flame_reset() {
+	flame_pu.ok = false;
+	flame_fuel = 0;
+	flame_hold_until = 0;
+	flame_kill_count = 0;
+	flame_show = 0;
+}
+
+static void flame_make_sprites() {
+	if(flame_spr)
+		return;
+	const int W_ = 26, H_ = 32;
+	SDL_Surface *sp = SDL_CreateRGBSurface(SDL_SWSURFACE, W_, H_, 16, 0xf800, 0x07e0, 0x001f, 0);
+	Uint32 key = SDL_MapRGB(sp->format, 255, 0, 255);
+	SDL_FillRect(sp, NULL, key);
+	for(int y=0; y<H_; y++) {
+		for(int x=0; x<W_; x++) {
+			int r = -1, g = 0, b = 0;
+			float dx = x - W_ / 2.0f + 0.5f;
+			if(y >= 10 && y < 30 && fabsf(dx) < 9.5f) {			// the tank: red with a bright edge on the left
+				float lit = 0.70f + 0.45f * (-dx / 9.5f) * 0.6f + 0.25f;
+				r = (int)(212 * lit); g = (int)(48 * lit); b = (int)(34 * lit);
+				if(y < 13 || y >= 27) { r = (int)(r * 0.62f); g = (int)(g * 0.62f); b = (int)(b * 0.62f); }	// the dark bands
+				if(fabsf(dx) > 8.2f) { r = 250; g = 232; b = 220; }												// pale rim
+			}
+			if(y >= 7 && y < 10 && fabsf(dx) < 4.5f) { r = 90; g = 90; b = 96; }									// valve
+			if(y >= 2 && y < 7 && dx > -1.5f && dx < 8.5f) { r = 120; g = 120; b = 126; }							// nozzle going right
+			// the flame glyph on the tank
+			float fx = dx, fy = y - 21.0f;
+			if(y >= 15 && y < 27) {
+				float wdt = (fy < 0 ? 5.0f + fy * 0.28f : 5.0f - fy * 0.55f);
+				if(fabsf(fx) < wdt * 0.55f) { r = 255; g = 170 + (int)(fy * 6); b = 40; }
+				if(fabsf(fx) < wdt * 0.25f && fy > -2) { r = 255; g = 240; b = 150; }
+			}
+			if(r >= 0)
+				*(Uint16 *)((Uint8 *)sp->pixels + y * sp->pitch + x * 2) = (Uint16)SDL_MapRGB(sp->format, r > 255 ? 255 : r, g > 255 ? 255 : (g < 0 ? 0 : g), b > 255 ? 255 : b);
+		}
+	}
+	SDL_SetColorKey(sp, SDL_SRCCOLORKEY, key);
+	flame_spr = sp;
+	flame_glow = make_glow_rgb(255, 120, 30, 56, 120.0f);
+}
+
+static void flame_drop(float x, float y) {
+	// where the bug fell if it is on the screen, otherwise a little ahead of the player
+	if(x < 30 || y < 30 || x > SCREEN_W - 30 || y > SCREEN_H - 30) {
+		float dx, dy;
+		move_xy(60.0f, add_angle(player.angle, -60), &dx, &dy);
+		x = player.x + dx;
+		y = player.y + dy;
+	}
+	enhanced_unstick(&x, &y);
+	flame_pu.ok = true;
+	flame_pu.x = x;
+	flame_pu.y = y;
+	flame_pu.life = (int)(tune.flame_ground_seconds * 60);
+	set_message("a flamethrower canister dropped");
+#ifdef FORMIDO_TESTHOOKS
+	fprintf(stderr, "flame: canister dropped at tick %ld (%d,%d)\n", enhanced_ticks, (int)x, (int)y);
+#endif
+}
+
+static void flame_update() {
+	if(flame_show > 0)
+		flame_show--;
+	if(flame_fuel > 0 && enhanced_ticks >= flame_hold_until) {
+		flame_fuel = 0;
+		set_message("the flamethrower's fuel has spoiled");
+	}
+	if(flame_pu.ok) {
+		if(--flame_pu.life <= 0)
+			flame_pu.ok = false;
+		else if(player.ok && distance(player.x, player.y, flame_pu.x, flame_pu.y) < 26) {
+			flame_pu.ok = false;
+			flame_fuel = (int)(tune.flame_fuel_seconds * 60);
+			flame_hold_until = enhanced_ticks + (long)(tune.flame_hold_seconds * 60);
+			flame_kill_count = 0;
+			set_message("flamethrower: short range, fuel is limited");
+			if(config.sound)
+				Mix_PlayChannel(-1, snd_power_up, 0);
+		}
+	}
+}
+
+void enhanced_flame_fire() {
+	float dx, dy;
+	move_xy(1.0f, add_angle(player.angle, -60), &dx, &dy);
+	flame_dirx = dx;
+	flame_diry = dy;
+	float ox = player.x + dx * 12, oy = player.y + dy * 12;
+	float range = tune.flame_range;
+	float tn = tanf(tune.flame_cone_degrees * 0.5f * 3.14159265f / 180.0f);
+
+	// how far the flame gets down the middle before rock stops it
+	flame_free = range;
+	for(int t=12; t<=(int)range; t+=6) {
+		if(world_blocked((int)(player.x + dx * t), (int)(player.y + dy * t), true)) {
+			flame_free = (float)t;
+			break;
+		}
+	}
+	flame_show = 5;
+
+	int used = (int)tune.flame_fire_delay_ticks;
+	flame_fuel -= used;
+	if(flame_fuel <= 0) {
+		flame_fuel = 0;
+		set_message("the flamethrower sputters out");
+#ifdef FORMIDO_TESTHOOKS
+		fprintf(stderr, "flame: out of fuel at tick %ld: %d bug hits, %d bugs killed by the flame\n", enhanced_ticks, flame_hits, flame_killed);
+#endif
+	}
+
+	for(CRITTER *c = critter_first; c; c = c->next) {
+		if(c->remove || c->hidden || c->health <= 0)
+			continue;
+		float vx = c->x - ox, vy = c->y - oy;
+		float f = vx * dx + vy * dy;
+		if(f < -8.0f || f > range + c->hs * 0.5f)
+			continue;
+		float l = fabsf(vx * dy - vy * dx);
+		if(l > (f > 0 ? f : 0) * tn + c->hs * 0.9f)
+			continue;
+		// rock between the nozzle and the bug stops the flame
+		bool blocked = false;
+		float dist = sqrtf(vx * vx + vy * vy);
+		for(float t=14; t<dist - 4 && !blocked; t+=10)
+			if(world_blocked((int)(ox + vx / dist * t), (int)(oy + vy / dist * t), true))
+				blocked = true;
+		if(blocked)
+			continue;
+		int dmg = (int)tune.flame_damage;
+		if(c->type == CT_TYRANT) {
+			dmg = (int)(dmg * tune.flame_tyrant_share + 0.5f);
+			if(dmg < 1)
+				dmg = 1;
+		}
+		c->health -= enhanced_damage(c, dmg);
+		c->burn = BURN_TICKS;
+#ifdef FORMIDO_TESTHOOKS
+		flame_hits++;
+#endif
+		if(RAND(0,3) == 0)
+			c->blood(RAND(1,2), RANDF(0, 359));
+		if(c->health <= 0) {
+#ifdef FORMIDO_TESTHOOKS
+			flame_killed++;
+#endif
+			c->die(RANDF(0, 359));
+		}
+	}
+}
+
+// a kill: after enough of them a canister drops (not while one lies about or is carried)
+static void flame_count_kill(int type, float x, float y) {
+	if(type == CT_PHANTOM || flame_anything())
+		return;
+	if(++flame_kill_count >= (int)tune.flame_every_kills) {
+		flame_kill_count = 0;
+		flame_drop(x, y);
+	}
+}
+
+static void flame_draw_under(SDL_Surface *bmp) {
+	if(flame_pu.ok && flame_spr && (flame_pu.life > 240 || (flame_pu.life / 8) % 2 == 0)) {
+		blit_center(bmp, flame_glow, (int)flame_pu.x, (int)flame_pu.y);
+		blit_center(bmp, flame_spr, (int)flame_pu.x, (int)flame_pu.y);
+	}
+}
+
+static void flame_draw_over(SDL_Surface *bmp) {
+	if(flame_show <= 0 || !player.ok)
+		return;
+	float range = tune.flame_range;
+	float tn = tanf(tune.flame_cone_degrees * 0.5f * 3.14159265f / 180.0f);
+	float ox = player.x + flame_dirx * 12, oy = player.y + flame_diry * 12;
+	float px = -flame_diry, py = flame_dirx;			// across the cone
+	for(int k=0; k<110; k++) {
+		float u = RANDF(0, 1);
+		u = u * u * 0.6f + u * 0.4f;						// more of it near the nozzle
+		float t = 6 + u * (flame_free - 6);
+		if(t < 6)
+			continue;
+		float lat = RANDF(-1, 1) * (t * tn * 0.95f + 3);
+		int s = (int)(11.0f - 7.0f * (t / range)) + RAND(0, 3);
+		float x = ox + flame_dirx * t + px * lat, y = oy + flame_diry * t + py * lat;
+		float w = t / range;
+		int r = 255, g, b;
+		if(w < 0.3f)      { g = RAND(215, 250); b = RAND(110, 190); }
+		else if(w < 0.65f) { g = RAND(130, 190); b = RAND(20, 50); }
+		else              { g = RAND(50, 100); b = RAND(10, 30); r = RAND(200, 245); }
+		rect(bmp, (int)x - s / 2, (int)y - s / 2, s, s, r, g, b);
 	}
 }
 
@@ -2410,6 +2702,8 @@ bool enhanced_tyrant_active() {
 }
 
 int enhanced_reload() {
+	if(enhanced_flame_active())
+		return (int)tune.flame_fire_delay_ticks;
 	return (int)(enhanced_ticks < boon_until ? tune.boon_fire_delay_ticks : tune.fire_delay_ticks);
 }
 
@@ -3150,6 +3444,7 @@ void enhanced_shift(float dx, float dy) {
 		abox[i].y += dy;
 	}
 	kit.x += dx; kit.y += dy;
+	flame_pu.x += dx; flame_pu.y += dy;
 	bunker.x += dx; bunker.y += dy;
 	trap_shift(dx, dy);
 	spore_x += dx; spore_y += dy;
@@ -3214,6 +3509,10 @@ static void spawn_arm_loot(int ci) {
 
 void enhanced_update() {
 	enhanced_ticks++;
+#ifdef FORMIDO_TESTHOOKS
+	if(getenv("FORMIDO_LEGEND") && enhanced_ticks == 120)
+		enhanced_show_legend();			// test builds: legend.bmp is saved when it opens
+#endif
 #ifdef FORMIDO_TESTHOOKS
 	if(player.ok) {
 		bot_alive_ticks++;
@@ -3323,6 +3622,8 @@ void enhanced_update() {
 	burrow_update(cell_index(gx, gy));
 	heal_plant_update(cell_index(gx, gy));
 	bunker_update();
+	flame_update();
+	tracers_update();
 	trap_update(cell_index(gx, gy));
 	tyrant_update();
 	phantom_update();
@@ -3437,6 +3738,7 @@ void enhanced_begin() {
 	thorn_out = 100;
 	thorn_hit = 0;
 	make_bunker_sprites();
+	flame_make_sprites();
 	make_trap_sprites();
 	make_badge_sprites();
 	for(int i=0; i<MAX_TRAPS; i++)
@@ -3473,6 +3775,10 @@ void enhanced_begin() {
 	tbox_timer = 60 * (RAND(60, 100));
 	kit.ok = false;
 	kit_carried = false;
+	flame_reset();
+	for(int i=0; i<MAX_TRACERS; i++)
+		tracers[i].ok = false;
+	tracer_shots = 0;
 	bunker.ok = false;
 	bunker.inside = false;
 	r_prev = false;
@@ -3550,6 +3856,13 @@ void enhanced_begin() {
 		traps[1].ok = true; traps[1].type = TRAP_GLUE; traps[1].x = 520; traps[1].y = 130; traps[1].integrity = 380; traps[1].life = 60 * 600;
 		traps[2].ok = true; traps[2].type = TRAP_GLUE; traps[2].x = 520; traps[2].y = 250; traps[2].integrity = 150; traps[2].life = 60 * 600;
 		traps[3].ok = true; traps[3].type = TRAP_NAPALM; traps[3].x = 400; traps[3].y = 250; traps[3].integrity = 420; traps[3].life = 60 * 600;
+	}
+	if(getenv("FORMIDO_FLAME")) {		// start with a flamethrower, and a canister lying ahead
+		flame_fuel = (int)(tune.flame_fuel_seconds * 60);
+		flame_hold_until = enhanced_ticks + (long)(tune.flame_hold_seconds * 60);
+	}
+	if(getenv("FORMIDO_FLAMEDROP")) {
+		flame_pu.ok = true; flame_pu.x = player.x + 70; flame_pu.y = player.y; flame_pu.life = 60 * 600;
 	}
 	if(getenv("FORMIDO_KIT"))			// start carrying a bunker kit
 		kit_carried = true;
@@ -3689,6 +4002,8 @@ static void draw_world_overlays(SDL_Surface *bmp) {
 	}
 
 	bunker_draw_over(bmp);
+	flame_draw_over(bmp);
+	tracers_draw(bmp);
 
 	// badges over the player
 	enhanced_draw_badges(bmp, (int)player.x, (int)player.y - 36, player_burn > 0, player_bleed > 0, player_slow > 0, player_stun > 0);
@@ -3797,6 +4112,14 @@ void enhanced_draw(SDL_Surface *bmp) {
 		rect(bmp, 8, SCREEN_H - 94, 7, 7, TRAP_COL[trap_loaded][0], TRAP_COL[trap_loaded][1], TRAP_COL[trap_loaded][2]);
 		font_write(bmp, FONT_NORMAL, 20, SCREEN_H - 99, line);
 	}
+	if(flame_fuel > 0) {
+		char line[64];
+		int fuel = (int)((flame_fuel + 59) / 60);
+		int left = (int)((flame_hold_until - enhanced_ticks) / 60);
+		snprintf(line, sizeof(line), "flamethrower  fuel %ds  spoils in %ds", fuel, left < 0 ? 0 : left);
+		rect(bmp, 8, SCREEN_H - 160, 7, 7, 255, 130, 40);
+		font_write(bmp, FONT_NORMAL, 20, SCREEN_H - 165, line);
+	}
 	if(kit_carried) {
 		rect(bmp, 8, SCREEN_H - 116, 7, 7, 220, 220, 200);
 		font_write(bmp, FONT_NORMAL, 20, SCREEN_H - 121, (char *)"bunker kit  (R1)");
@@ -3844,7 +4167,7 @@ void laser_sight_draw(SDL_Surface *bmp) {
 	my += player.y;
 	move_xy(1.0f, add_angle(player.angle, -60), &dx, &dy);
 
-	const int RANGE = 260;
+	const int RANGE = enhanced_flame_active() ? (int)tune.flame_range : 260;
 	if(SDL_MUSTLOCK(bmp))
 		SDL_LockSurface(bmp);
 	int end = RANGE;
@@ -3884,9 +4207,10 @@ void laser_sight_draw(SDL_Surface *bmp) {
 ///////////////////////////////////////////////////////////////////////////////
 // The legend (L2)
 
-void enhanced_bug_killed(int type) {
+void enhanced_bug_killed(int type, float x, float y) {
 	if(type >= 0 && type < NUM_CTYPES)
 		stat_kills[type]++;
+	flame_count_kill(type, x, y);
 }
 
 // a scaled copy of (a part of) a sprite into box x box around (cx, cy); nearest neighbour, colour key and alpha respected
@@ -4015,24 +4339,24 @@ void enhanced_show_legend() {
 	legend_row(bmp, 1, 2, 1, one, NULL, (char *)"slowed", (char *)"spikes and glue");
 	one[0] = fire_glow;
 	legend_row(bmp, 1, 3, 1, one, NULL, (char *)"napalm field", (char *)"burns what is inside");
-	one[0] = spike_spr[0];
-	legend_row(bmp, 1, 4, 1, one, NULL, (char *)"spikes", (char *)"bleed and slow");
-	one[0] = glue_spr[0];
-	legend_row(bmp, 1, 5, 1, one, NULL, (char *)"glue", (char *)"holds bugs still");
+	one[0] = spike_spr[0]; one[1] = glue_spr[0];
+	legend_row(bmp, 1, 4, 2, one, NULL, (char *)"spikes, glue", (char *)"bleed, slow, hold");
 	{
-		int x = 346, y = 40 + 6 * 44;
+		int x = 346, y = 40 + 5 * 44;
 		rect(bmp, x + 2, y + 12, 30, 12, 150, 28, 62);
 		rect(bmp, x + 2, y + 12, 15, 12, 220, 70, 80);
 		font_write(bmp, FONT_NORMAL2, x + 46, y + 2, (char *)"hive tyrant");
 		font_write(bmp, FONT_NORMAL, x + 46, y + 22, (char *)"boss bar, slay it");
 	}
 	{
-		int x = 346, y = 40 + 7 * 44;
+		int x = 346, y = 40 + 6 * 44;
 		for(int k=0; k<3; k++)
 			rect(bmp, x + 4 + k * 10, y + 22 - k * 3, 6, 6, 190, 150, 100);
 		font_write(bmp, FONT_NORMAL2, x + 46, y + 2, (char *)"ground trembles");
 		font_write(bmp, FONT_NORMAL, x + 46, y + 22, (char *)"burrower: move!");
 	}
+	one[0] = flame_spr;
+	legend_row(bmp, 1, 7, 1, one, NULL, (char *)"flamethrower", (char *)"after many kills");
 	// a light stats strip
 	{
 		rect(bmp, 14, 394, SCREEN_W - 28, 2, 90, 90, 80);

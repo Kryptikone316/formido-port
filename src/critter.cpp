@@ -511,7 +511,7 @@ void CRITTER::die(float bul_angle) {
 
 #ifdef SF3500
 	if(enhanced)
-		enhanced_bug_killed(type);
+		enhanced_bug_killed(type, x, y);
 	if(enhanced && type == CT_PHANTOM)
 		enhanced_phantom_slain(x, y);
 	if(enhanced && guard)
