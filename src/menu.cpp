@@ -340,7 +340,7 @@ int show_menu(int menu_id) {
 						config.laser = (config.laser + 1) % 3;
 						break;
 					case MENU_OPT_FPS:
-						config.fps_cap = (config.fps_cap == 20) ? 30 : (config.fps_cap == 30) ? 60 : 20;
+						config.fps_cap = (config.fps_cap == 20) ? 30 : (config.fps_cap == 30) ? 40 : (config.fps_cap == 40) ? 45 : 20;
 						sf3500_set_frame_cap(config.fps_cap);
 						break;
 					case MENU_OPT_CREDITS:
@@ -423,9 +423,9 @@ int show_menu(int menu_id) {
 						Mix_PlayChannel(-1, snd_menu[0], 0);
 				}
 				else if(menu_item == MENU_OPT_FPS) {
-					static const int caps[3] = { 20, 30, 60 };
-					int i = (config.fps_cap == 20) ? 0 : (config.fps_cap == 30) ? 1 : 2;
-					i = (i + dir + 3) % 3;
+					static const int caps[4] = { 20, 30, 40, 45 };
+					int i = (config.fps_cap == 20) ? 0 : (config.fps_cap == 30) ? 1 : (config.fps_cap == 40) ? 2 : 3;
+					i = (i + dir + 4) % 4;
 					config.fps_cap = caps[i];
 					sf3500_set_frame_cap(config.fps_cap);
 					if(config.sound)
@@ -487,7 +487,7 @@ int show_menu(int menu_id) {
 		else if(menu_id == MENU_ID_SETTINGS) {
 			ax = 288;
 #ifdef SF3500
-			static const int row_y[7] = { 170, 212, 254, 296, 338, 392, 432 };	// controls, laser, frame limit, credits, reset, volume, accept
+			static const int row_y[7] = { 164, 205, 246, 287, 328, 408, 438 };	// controls, laser, frame limit, credits, reset, volume, accept
 			ay = row_y[menu_item - MENU_OPT_CONTROLS] - 4;
 #else
 			ay = 170 + (menu_item - MENU_KEY_FORWARD) * 35;
@@ -523,39 +523,40 @@ int show_menu(int menu_id) {
 		if(menu_id == MENU_ID_SETTINGS) {
 #ifdef SF3500
 			// Rows drawn with the game's own handwriting fonts on the cleaned panel
-			static const int row_y[7] = { 170, 212, 254, 296, 338, 392, 432 };
-			// the values are right-aligned to the panel's edge (the fonts are larger now)
-			#define VALX(str) (598 - font_length(FONT_NORMAL, (char *)(str)))
-			font_write(screen, FONT_NORMAL2, 322, 146, "game settings");
+			static const int row_y[7] = { 164, 205, 246, 287, 328, 408, 438 };
+			// the values are right-aligned to the panel's edge; labels and values use the larger menu font
+			#define VALX(str) (602 - font_length_med((char *)(str)))
+			#define SEL(item) (menu_item == (item) ? 1 : 0)
+			font_write_med(screen, 1, 322, 138, (char *)"game settings");
 
 			char *ctl = (char *)(config.controls ? "twin stick" : "classic");
-			font_write(screen, (menu_item == MENU_OPT_CONTROLS) ? FONT_NORMAL2 : FONT_NORMAL, 322, row_y[0], "controls");
-			font_write(screen, (menu_item == MENU_OPT_CONTROLS) ? FONT_NORMAL2 : FONT_NORMAL, VALX(ctl), row_y[0], ctl);
-			font_write(screen, FONT_NORMAL, 322, row_y[0]+20, (char *)(config.controls ? "L1 + A B X Y to aim" : "turn L/R, A to fire"));
+			font_write_med(screen, SEL(MENU_OPT_CONTROLS), 322, row_y[0], (char *)"controls");
+			font_write_med(screen, SEL(MENU_OPT_CONTROLS), VALX(ctl), row_y[0], ctl);
+			font_write(screen, FONT_NORMAL, 322, row_y[0]+23, (char *)(config.controls ? "L1 + A B X Y to aim" : "turn L/R, A to fire"));
 
 			static char *laser_words[3] = { (char *)"off", (char *)"enhanced", (char *)"always" };
-			font_write(screen, (menu_item == MENU_OPT_LASER) ? FONT_NORMAL2 : FONT_NORMAL, 322, row_y[1], "laser sight");
-			font_write(screen, (menu_item == MENU_OPT_LASER) ? FONT_NORMAL2 : FONT_NORMAL, VALX(laser_words[config.laser]), row_y[1], laser_words[config.laser]);
-			font_write(screen, FONT_NORMAL, 322, row_y[1]+20, "a red line shows aim");
+			font_write_med(screen, SEL(MENU_OPT_LASER), 322, row_y[1], (char *)"laser sight");
+			font_write_med(screen, SEL(MENU_OPT_LASER), VALX(laser_words[config.laser]), row_y[1], laser_words[config.laser]);
+			font_write(screen, FONT_NORMAL, 322, row_y[1]+23, (char *)"a red line shows aim");
 
 			char buf[32];
 			sprintf(buf, "%d fps", config.fps_cap);
-			font_write(screen, (menu_item == MENU_OPT_FPS) ? FONT_NORMAL2 : FONT_NORMAL, 322, row_y[2], "frame limit");
-			font_write(screen, (menu_item == MENU_OPT_FPS) ? FONT_NORMAL2 : FONT_NORMAL, VALX(buf), row_y[2], buf);
-			font_write(screen, FONT_NORMAL, 322, row_y[2]+20, "20 for slower devices");
+			font_write_med(screen, SEL(MENU_OPT_FPS), 322, row_y[2], (char *)"frame limit");
+			font_write_med(screen, SEL(MENU_OPT_FPS), VALX(buf), row_y[2], buf);
+			font_write(screen, FONT_NORMAL, 322, row_y[2]+23, (char *)(config.fps_cap == 20 ? "easy on slow devices" : (config.fps_cap == 30 ? "steady: the default" : "faster, may slow down")));
 
 			char *cr = (char *)(config.credits ? "on" : "off");
-			font_write(screen, (menu_item == MENU_OPT_CREDITS) ? FONT_NORMAL2 : FONT_NORMAL, 322, row_y[3], "credits on exit");
-			font_write(screen, (menu_item == MENU_OPT_CREDITS) ? FONT_NORMAL2 : FONT_NORMAL, VALX(cr), row_y[3], cr);
-			font_write(screen, FONT_NORMAL, 322, row_y[3]+20, "select+start leaves now");
+			font_write_med(screen, SEL(MENU_OPT_CREDITS), 322, row_y[3], (char *)"credits on exit");
+			font_write_med(screen, SEL(MENU_OPT_CREDITS), VALX(cr), row_y[3], cr);
+			font_write(screen, FONT_NORMAL, 322, row_y[3]+23, (char *)"select+start leaves now");
 
 			{
 				char *rs = (char *)(reset_armed ? "select again: erase" : (reset_done > 0 ? "scores erased" : "both lists"));
-				font_write(screen, (menu_item == MENU_OPT_RESET) ? FONT_NORMAL2 : FONT_NORMAL, 322, row_y[4], "reset hall of fame");
-				font_write(screen, FONT_NORMAL, 322, row_y[4]+20, rs);
+				font_write_med(screen, SEL(MENU_OPT_RESET), 322, row_y[4], (char *)"reset hall of fame");
+				font_write(screen, FONT_NORMAL, 322, row_y[4]+23, rs);
 			}
-			font_write(screen, (menu_item == MENU_MUS_VOLUME) ? FONT_NORMAL2 : FONT_NORMAL, 322, row_y[5]-24, "music volume");
-			font_write(screen, (menu_item == MENU_ACCEPT) ? FONT_NORMAL2 : FONT_NORMAL, 322, row_y[6], "accept settings");
+			font_write_med(screen, SEL(MENU_MUS_VOLUME), 322, row_y[5]-28, (char *)"music volume");		// (slider below it)
+			font_write_med(screen, SEL(MENU_ACCEPT), 322, row_y[6], (char *)"accept settings");
 			{
 				// The volume slider
 				float vol = config.music_vol / 128.0;
@@ -602,8 +603,8 @@ int show_menu(int menu_id) {
 #ifdef SF3500
 			(hof_page ? list_e : list).draw(screen, 10, 10, -1);
 			char *t = (char *)(hof_page ? "< enhanced game >" : "< classic game >");
-			font_write(screen, FONT_NORMAL, 380, 194, (char *)"left / right: switch");
-			font_write(screen, FONT_NORMAL2, 380, 170, t);
+			font_write_med(screen, 0, 380, 198, (char *)"left / right: switch");
+			font_write_med(screen, 1, 380, 166, t);
 #else
 			list.draw(screen, 10, 10, -1);
 #endif

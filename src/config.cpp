@@ -66,7 +66,7 @@ void load_config(char *file, CONFIG *conf) {
 	fscanf(f, "laser_sight = %d\n", &(conf->laser));
 	if(conf->laser < 0 || conf->laser > 2)
 		conf->laser = 1;
-	if(conf->fps_cap != 20 && conf->fps_cap != 30 && conf->fps_cap != 60)
+	if(conf->fps_cap != 20 && conf->fps_cap != 30 && conf->fps_cap != 40 && conf->fps_cap != 45)		// (60 was removed: too much slowdown)
 		conf->fps_cap = 30;
 #endif
 	fclose(f);

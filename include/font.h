@@ -52,6 +52,8 @@ void font_write(SDL_Surface *bmp, int font, int x, int y, char *str);
 // Larger handwriting for the main menu's entries (the painted ones cannot be extended); sel: 0 white, 1 green
 void load_big_font();
 void font_write_big(SDL_Surface *bmp, int sel, int x, int y, char *str);
+void font_write_med(SDL_Surface *bmp, int sel, int x, int y, char *str);	// the settings screen's size
+int font_length_med(char *str);
 #endif
 
 // Return string length using a specifig font
