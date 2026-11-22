@@ -35,7 +35,7 @@ an `SPDX-License-Identifier: GPL-2.0-or-later` line. Where each part comes from,
 | Part | Origin | Terms | Status |
 |---|---|---|---|
 | Game code, game design, artwork, fonts | Mika Halttunen, Formido 1.0.1 | GPL v2 or later (the game's `README`, section 1; the author's web page says GPL as well) | stated by the author |
-| Music (`data/music*.ogg`, five files) | Josh Schroeder, credited in the `README` | the author ships it inside his own GPL release (`formido-1.0.1.tar.gz`, "source code and data") and offers it as a separate download; no separate licence text for it was found | **not confirmed**: redistributed unmodified, as upstream does; the game runs without it |
+| Music (`data/music*.ogg`, five files) | Josh Schroeder, credited in the `README` and in the game's own credits screen ("MUSIC: josh schroeder", with a credits track of its own) | the author ships it inside his own GPL release (`formido-1.0.1.tar.gz`, "source code and data") and offers it as a separate download; no separate licence text for it was found | **not confirmed**: redistributed unmodified, as upstream does; the game runs without it |
 | Port code (`#ifdef SF3500` changes, `src/enhanced.cpp`, `src/tuning.cpp`, `tools/`) | this port | GPL v2 or later | ours |
 | Enhanced-game art made by `tools/make_wasteland.py`, `make_center_enh.py`, `make_healplant.py`, `make_menu_clean.py` | generated here from upstream's art plus procedural noise | GPL v2 or later (derived from upstream's art) | ours / derivative |
 | Sounds `flame.dat`, `flame_start.dat`, `tyrant_roar.dat` | synthesised by `tools/make_sounds.py`, no samples | GPL v2 or later | ours |
