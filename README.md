@@ -167,8 +167,8 @@ The main menu has **play classic game** (the original, untouched) and **play enh
 
 ## Settings (menu: game settings)
 
-Controls (twin stick / classic tank), laser sight (off / enhanced / always), frame limit (20, 30, 40 or 45 fps, 30 by default; 60 was removed because it slowed the game down, and 40 and 45 are
-untested on the device; the game logic keeps its own 60 Hz timer, so a lower limit only makes the picture less smooth), credits on exit (on / off) and music volume. Left/right or the
+Controls (twin stick / classic tank), laser sight (off / enhanced / always), frame limit (20, 30, 40 or 45 fps; 60 was removed because it slowed the game down. 40 and 45 were tested on the
+SF3500 and run well; they are untested on other devices, so the default stays at 30; the game logic keeps its own 60 Hz timer, so a lower limit only makes the picture less smooth), credits on exit (on / off) and music volume. Left/right or the
 select button change a row. They are saved in `.formido/formido.cfg` as `controls`, `frame_limit` and
 `credits_on_exit`. Select + Start always leaves at once, without the credits. The settings panel uses
 `data/menu2_sf.dat`, made from the upstream `menu2.dat` by `tools/make_menu_clean.py` (the painted key labels are

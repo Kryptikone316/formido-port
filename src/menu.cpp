@@ -543,7 +543,7 @@ int show_menu(int menu_id) {
 			sprintf(buf, "%d fps", config.fps_cap);
 			font_write_med(screen, SEL(MENU_OPT_FPS), 312, row_y[2], (char *)"frame limit");
 			font_write_med(screen, SEL(MENU_OPT_FPS), VALX(buf), row_y[2], buf);
-			font_write(screen, FONT_NORMAL, 312, row_y[2]+23, (char *)(config.fps_cap == 20 ? "easy on slow devices" : (config.fps_cap == 30 ? "steady: the default" : "faster, may slow down")));
+			font_write(screen, FONT_NORMAL, 312, row_y[2]+23, (char *)(config.fps_cap == 20 ? "easy on slow devices" : (config.fps_cap == 30 ? "steady: the default" : "smooth on the SF3500")));
 
 			char *cr = (char *)(config.credits ? "on" : "off");
 			font_write_med(screen, SEL(MENU_OPT_CREDITS), 312, row_y[3], (char *)"credits on exit");
