@@ -4,7 +4,7 @@ The enhanced game is meant to be unwinnable: the hive keeps sending more, and th
 you can do with the time. To tune it without a person playing hundreds of games, a bot played the enhanced game many times
 (a fast PC build, with a sample of games cross-checked against the real MIPS code under emulation), first with the default
 numbers and then changing one setting at a time. This is a summary of what that showed and what came of it. The raw runs
-are not kept here; the test hooks and scripts that produced them are (`run_bots.sh`, `sweep*.sh`, `tools/bot_stats.py`).
+are in `BOT-RESULTS.md` and `BOT-SWEEP.md` next to this file; the scripts that produced them are `run_bots.sh`, `sweep*.sh` and `tools/bot_stats.py`.
 
 ## What the bots showed
 
